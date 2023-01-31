@@ -1,0 +1,1 @@
+export type TJson = { [key: string]: any }
