@@ -38,7 +38,7 @@ class RepertoireOrm extends SequelizeOrm {
     }
 
     setBackup(payload: TJson): Promise<TSetBackupResult> {
-        const entryList = JSON.parse(payload?.data)
+        const entryList = payload?.data
 
         if (!Array.isArray(entryList)) {
             return Promise.resolve({
