@@ -1,4 +1,4 @@
-import { Model, ModelStatic } from 'sequelize'
+import { Model, ModelDefined } from 'sequelize'
 import SequelizeOrm from '../../db/SequelizeOrm'
 import { TSequelizeOrmProps } from '../../db/types/TSequelizeOrmProps'
 import { TJson } from '../../types/TJson'
@@ -7,16 +7,17 @@ import { createBackupFromDbEntryList } from './helpers/create-backup-from-db-ent
 import { getLooneyToolEntryType } from './helpers/get-looney-tool-entry-type'
 import setlistModel from './models/setlist'
 import songModel from './models/song'
+import { TSetlistAttributes, TSetlistCreationAttributes } from './types/TSetlist'
+import { TSongAttributes, TSongCreationAttributes } from './types/TSong'
 
 type TSetBackupResult = {
     success: boolean
     error: any
 }
 
-
 class RepertoireOrm extends SequelizeOrm {
-    Setlist: ModelStatic<Model>
-    Song: ModelStatic<Model>
+    Setlist: ModelDefined<TSetlistAttributes, TSetlistCreationAttributes>
+    Song: ModelDefined<TSongAttributes, TSongCreationAttributes>
 
     constructor(props: TSequelizeOrmProps) {
         super(props)
@@ -27,12 +28,13 @@ class RepertoireOrm extends SequelizeOrm {
 
     // route: backup
 
-    getBackup(): Promise<Partial<Model>[]> {
+    getBackup() {
         return Promise.all([
             this.Setlist.findAll(),
             this.Song.findAll(),
-        ]).then((entryLists: Model[][]) => {
-            const flatList = entryLists.reduce((result: Model[], currentList: Model[]) => [ ...result, ...currentList ], [])
+        ]).then((entryLists) => {
+            // @ts-ignore
+            const flatList = entryLists.reduce((result, currentList) => [ ...result, ...currentList ], [])
             return createBackupFromDbEntryList(flatList)
         })
     }
@@ -52,7 +54,7 @@ class RepertoireOrm extends SequelizeOrm {
                 return new Promise((resolve, reject) => {
                     const currentEntryType = getLooneyToolEntryType(entry.key)
 
-                    let dbRequest: Promise<Model<any, any> | null | void> = Promise.resolve()
+                    let dbRequest: Promise<Model | null | void> = Promise.resolve()
 
                     switch (currentEntryType) {
                         case LooneyToolEntryType.SETLIST:
@@ -84,7 +86,7 @@ class RepertoireOrm extends SequelizeOrm {
                                         toolKey: entry.key,
                                         title: entry.value?.title,
                                         songs: entry.value?.songs,
-                                    })
+                                    } as TSetlistAttributes)
                                         .then(resolve)
                                 }
                                 case LooneyToolEntryType.SONG: {
@@ -96,7 +98,7 @@ class RepertoireOrm extends SequelizeOrm {
                                         toolKey: entry.key,
                                         title: entry.value?.title,
                                         lyrics: entry.value?.lyrics,
-                                    })
+                                    } as TSongAttributes)
                                         .then(resolve)
                                 }
                             }

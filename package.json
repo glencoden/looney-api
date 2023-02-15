@@ -22,6 +22,7 @@
         "express": "^4.18.2",
         "node-oauth2-server": "^2.4.0",
         "pg": "^8.9.0",
-        "sequelize": "^6.28.0"
+        "sequelize": "^6.28.0",
+        "socket.io": "^4.6.0"
     }
 }
