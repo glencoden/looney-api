@@ -55,7 +55,9 @@ Promise.all([
             },
         )
 
-        io.on('connection', (socket) => {
+        io.on('connection', (
+            // socket
+        ) => {
             console.log('a user connected')
         })
 

@@ -8,7 +8,7 @@ const UDP_BUFFER: { [key: string]: Uint8Array } = {
     NOTE_END: Buffer.from('int\x00,i\x00\x00\x00\x00\x00@'),
 }
 
-export function bindAutoToolServer(io) {
+export function bindAutoToolServer(io: any) {
     server.on('error', (err: any) => {
         console.log(`server error:\n${err.stack}`)
         server.close()
