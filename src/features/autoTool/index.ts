@@ -17,6 +17,7 @@ export function bindAutoToolServer(io: any) {
     let isKeyDown = false
 
     server.on('message', (msg: Uint8Array, _rinfo: any) => {
+        console.log('word from ableton')
         if (Buffer.compare(msg, UDP_BUFFER.NOTE_START) === 0) {
             if (isKeyDown) {
                 return
