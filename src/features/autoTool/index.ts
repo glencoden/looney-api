@@ -1,7 +1,7 @@
 const dgram = require('dgram')
 const server = dgram.createSocket('udp4')
 
-const PORT = 9000
+const PORT = 5555
 
 const UDP_BUFFER: { [key: string]: Uint8Array } = {
     NOTE_START: Buffer.from('int\x00,i\x00\x00\x00\x00\x00d'),
