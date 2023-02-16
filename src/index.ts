@@ -59,9 +59,7 @@ Promise.all([
             console.log('a user connected')
         })
 
-
-
-        bindAutoToolServer(PORT, io)
+        bindAutoToolServer(io)
     })
     .catch(err => {
         console.error('Cannot connect to database.', err)
