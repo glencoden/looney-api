@@ -12,4 +12,5 @@ export default {
         allowNull: false,
     },
     songs: DataTypes.ARRAY(DataTypes.STRING),
+    published: DataTypes.BOOLEAN,
 } as ModelAttributes

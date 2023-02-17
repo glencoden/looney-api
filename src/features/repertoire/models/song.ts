@@ -12,4 +12,5 @@ export default {
         allowNull: false,
     },
     lyrics: DataTypes.JSON,
+    special: DataTypes.BOOLEAN,
 } as ModelAttributes
