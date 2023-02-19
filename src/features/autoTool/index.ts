@@ -16,8 +16,23 @@ export function bindAutoToolServer(io: any) {
 
     let isKeyDown = false
 
+    let debugResult: string[][] | null = null
+
     server.on('message', (msg: Uint8Array, _rinfo: any) => {
-        console.log('word from ableton')
+        if (debugResult === null) {
+            debugResult = []
+            setTimeout(() => {
+                console.log('UDP: ', debugResult)
+                debugResult = null
+            }, 2000)
+        }
+        const currentResult = []
+        const currentMessage = msg.toString()
+        for (let i = 0; i < currentMessage.length; i++) {
+            currentResult.push(currentMessage[i])
+        }
+        debugResult.push(currentResult)
+
         if (Buffer.compare(msg, UDP_BUFFER.NOTE_START) === 0) {
             if (isKeyDown) {
                 return
