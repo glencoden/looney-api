@@ -11,6 +11,7 @@ export default {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    songs: DataTypes.ARRAY(DataTypes.STRING),
+    songs: DataTypes.ARRAY(DataTypes.INTEGER),
+    songsByToolKeyId: DataTypes.ARRAY(DataTypes.STRING),
     published: DataTypes.BOOLEAN,
 } as ModelAttributes

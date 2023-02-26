@@ -3,6 +3,8 @@ const server = dgram.createSocket('udp4')
 
 const PORT = 5555
 
+// Buffer map, previously used for comparison with incoming UDP messages
+
 // const UDP_BUFFER: { [key: string]: Uint8Array } = {
 //     NOTE_START: Buffer.from('int\x00,i\x00\x00\x00\x00\x00d'),
 //     NOTE_END: Buffer.from('int\x00,i\x00\x00\x00\x00\x00@'),

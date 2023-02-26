@@ -2,6 +2,7 @@ import { TJson } from '../../../types/TJson'
 import { LooneyToolEntryType } from '../enums/LooneyToolEntryType'
 import { getLooneyToolEntryType } from './get-looney-tool-entry-type'
 import { getLooneyToolId } from './get-looney-tool-id'
+import { getToolTitleFromArtistAndTitle } from './get-tool-title-from-artist-and-title'
 
 export const createBackupFromDbEntryList = (list: any): TJson[] => {
     return list
@@ -15,7 +16,7 @@ export const createBackupFromDbEntryList = (list: any): TJson[] => {
                         value: {
                             id: getLooneyToolId(entry.toolKey),
                             title: entry.title,
-                            songs: entry.songs,
+                            songs: entry.songsByToolKeyId,
                         },
                     }
                 case LooneyToolEntryType.SONG:
@@ -23,7 +24,7 @@ export const createBackupFromDbEntryList = (list: any): TJson[] => {
                         key: entry.toolKey,
                         value: {
                             id: getLooneyToolId(entry.toolKey),
-                            title: entry.title,
+                            title: getToolTitleFromArtistAndTitle(entry.artist, entry.title),
                             lyrics: entry.lyrics,
                         },
                     }
