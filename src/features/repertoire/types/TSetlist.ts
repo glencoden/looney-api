@@ -1,11 +1,12 @@
 import { Optional } from 'sequelize'
 
-export type TSetlistAttributes = {
+export type TSetlist = {
     id: number
     toolKey?: string
     title: string
-    songs: string[]
+    songs: number[]
+    songsByToolKeyId: string[]
     published: boolean
 }
 
-export type TSetlistCreationAttributes = Optional<TSetlistAttributes, 'id' | 'toolKey'>
+export type TSetlistCreationAttributes = Optional<TSetlist, 'id' | 'toolKey'>

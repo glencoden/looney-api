@@ -7,6 +7,10 @@ export default {
         primaryKey: true,
     },
     toolKey: DataTypes.STRING,
+    artist: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
     title: {
         type: DataTypes.STRING,
         allowNull: false,
