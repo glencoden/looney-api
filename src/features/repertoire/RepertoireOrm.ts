@@ -55,6 +55,8 @@ class RepertoireOrm extends SequelizeOrm {
                     .then((songs) => {
                         return {
                             // @ts-ignore
+                            id: setlist.id,
+                            // @ts-ignore
                             title: setlist.title,
                             // @ts-ignore
                             songs: songs.map((song) => ({
