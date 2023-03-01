@@ -6,9 +6,11 @@ const {
     GLEN_CALENDAR_PROJECT_NUMBER,
     GOOGLE_CALENDAR_ID,
     CALENDAR_SCOPES,
-    GOOGLE_PRIVATE_KEY,
+    GOOGLE_PRIVATE_KEY_BASE64,
     GOOGLE_CLIENT_EMAIL,
 } = process.env
+
+const GOOGLE_PRIVATE_KEY = atob(GOOGLE_PRIVATE_KEY_BASE64 ?? '')
 
 const jwtClient = new google.auth.JWT(
     GOOGLE_CLIENT_EMAIL,
@@ -16,8 +18,6 @@ const jwtClient = new google.auth.JWT(
     GOOGLE_PRIVATE_KEY,
     CALENDAR_SCOPES,
 )
-
-console.log(GOOGLE_PRIVATE_KEY)
 
 // @ts-ignore
 const calendar = google.calendar({
