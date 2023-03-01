@@ -1,16 +1,13 @@
 import express from 'express'
-import { getShowDates } from './utils/getShowDates'
+import { getEvents } from './utils/getEvents'
 
 
 export function calendarRouter() {
     const router = express.Router()
 
-    router.get('/', async (_req, res) => {
-        const showDates = await getShowDates()
-        console.log(showDates)
-        res.json({
-            showDates,
-        })
+    router.get('/events', async (_req, res) => {
+        const response = await getEvents()
+        res.json(response)
     })
 
     return router
