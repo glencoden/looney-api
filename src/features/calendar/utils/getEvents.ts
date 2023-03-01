@@ -17,6 +17,8 @@ const jwtClient = new google.auth.JWT(
     CALENDAR_SCOPES,
 )
 
+console.log(GOOGLE_PRIVATE_KEY)
+
 // @ts-ignore
 const calendar = google.calendar({
     version: 'v3',
