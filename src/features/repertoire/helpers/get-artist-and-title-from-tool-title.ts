@@ -1,6 +1,19 @@
 const DELIMITER = '-'
 
-const EXCEPTION_ARTIST_NAMES = [ 'AC/DC', 'KISS', 'R.E.M.', 'ABBA', 'ZZ Top', 'A-HA', 'B-52s', 'TOTO', 'H.I.M.', 'U2', 'Guns n\' Roses' ]
+const EXCEPTION_ARTIST_NAMES = {
+    ['AC/DC']: 'AC/DC',
+    ['KISS']: 'KISS',
+    ['R.E.M.']: 'R.E.M.',
+    ['ABBA']: 'ABBA',
+    ['ZZ Top']: 'ZZ Top',
+    ['A-HA']: 'A-HA',
+    ['B-52s']: 'B-52s',
+    ['TOTO']: 'TOTO',
+    ['H.I.M.']: 'H.I.M.',
+    ['U2']: 'U2',
+    ['Guns n\' Roses']: 'Guns n\' Roses',
+    ['Guns n\'Roses']: 'Guns n\' Roses',
+}
 
 const capitalFirstLetter = (input: string): string => {
     let result = ''
@@ -16,8 +29,12 @@ const capitalFirstLetter = (input: string): string => {
 
 const parseTitlePartial = (input: string): string => {
     const result = input.trim()
-    if (EXCEPTION_ARTIST_NAMES.includes(result)) {
-        return result
+    const exceptions = Object.entries(EXCEPTION_ARTIST_NAMES)
+    for (let i = 0; i < exceptions.length; i++) {
+        const [key, value] = exceptions[i]
+        if (key.toLowerCase() === result.toLowerCase()) {
+            return value
+        }
     }
     return result.replace(/[^\s\.,\/]+/g, capitalFirstLetter)
 }
