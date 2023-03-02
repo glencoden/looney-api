@@ -60,6 +60,7 @@ class RepertoireOrm extends SequelizeOrm {
                             title: setlist.title,
                             // @ts-ignore
                             songs: songs.map((song) => ({
+                                id: song.id,
                                 artist: song.artist,
                                 title: song.title,
                                 special: song.special,

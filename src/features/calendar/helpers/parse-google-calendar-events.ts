@@ -3,7 +3,7 @@ import { TLiveEvent } from '../types/TLiveEvent'
 
 const EVENT_IDENTIFIER = '@'
 
-const HIDDEN_WORDS = [ 'confirmed' ]
+const HIDDEN_WORDS = [ 'confirmed', 'anfrage' ]
 
 const HIDDEN_WORDS_REGEX = HIDDEN_WORDS.map((word: string) => {
     let matchString = ''
