@@ -5,7 +5,7 @@ import { TJson } from '../../types/TJson'
 import { LooneyToolEntryType } from './enums/LooneyToolEntryType'
 import { createBackupFromDbEntryList } from './helpers/create-backup-from-db-entry-list'
 import { createLooneyToolKey } from './helpers/create-looney-tool-key'
-import { getArtistAndTitleFormToolTitle } from './helpers/get-artist-and-title-form-tool-title'
+import { getArtistAndTitleFromToolTitle } from './helpers/get-artist-and-title-from-tool-title'
 import { getLooneyToolEntryType } from './helpers/get-looney-tool-entry-type'
 import setlistModel from './models/setlist'
 import songModel from './models/song'
@@ -183,7 +183,7 @@ class RepertoireOrm extends SequelizeOrm {
                                         reject()
                                         return
                                     }
-                                    const { artist, title } = getArtistAndTitleFormToolTitle(entry.value.title)
+                                    const { artist, title } = getArtistAndTitleFromToolTitle(entry.value.title)
                                     return this.Song.create({
                                         toolKey: entry.key,
                                         artist,
@@ -226,7 +226,7 @@ class RepertoireOrm extends SequelizeOrm {
                                     reject()
                                     return
                                 }
-                                const { artist, title } = getArtistAndTitleFormToolTitle(entry.value.title)
+                                const { artist, title } = getArtistAndTitleFromToolTitle(entry.value.title)
                                 return this.Song.update({
                                     toolKey: entry.key,
                                     artist,

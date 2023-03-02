@@ -2,12 +2,22 @@ import { TJson } from '../../../types/TJson'
 import { TLiveEvent } from '../types/TLiveEvent'
 
 const EVENT_IDENTIFIER = '@'
+
 const HIDDEN_WORDS = [ 'confirmed' ]
+
+const HIDDEN_WORDS_REGEX = HIDDEN_WORDS.map((word: string) => {
+    let matchString = ''
+    for (let i = 0; i < word.length; i++) {
+        matchString += `[${word[i].toLowerCase()}${word[i].toUpperCase()}]`
+    }
+    matchString += '[^a-zA-Z]?'
+    return new RegExp(matchString, 'g')
+})
 
 const removeHiddenWords = (input: string): string => {
     let result = input
-    for (let i = 0; i < HIDDEN_WORDS.length; i++) {
-        const currentWord = HIDDEN_WORDS[i]
+    for (let i = 0; i < HIDDEN_WORDS_REGEX.length; i++) {
+        const currentWord = HIDDEN_WORDS_REGEX[i]
         result = result.replace(currentWord, '')
     }
     return result.trim()
