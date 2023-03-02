@@ -13,6 +13,7 @@ const EXCEPTION_ARTIST_NAMES = {
     ['U2']: 'U2',
     ['Guns n\' Roses']: 'Guns n\' Roses',
     ['Guns n\'Roses']: 'Guns n\' Roses',
+    ['R.H.C.P.']: 'Red Hot Chili Peppers',
 }
 
 const capitalFirstLetter = (input: string): string => {
@@ -31,7 +32,7 @@ const parseTitlePartial = (input: string): string => {
     const result = input.trim()
     const exceptions = Object.entries(EXCEPTION_ARTIST_NAMES)
     for (let i = 0; i < exceptions.length; i++) {
-        const [key, value] = exceptions[i]
+        const [ key, value ] = exceptions[i]
         if (key.toLowerCase() === result.toLowerCase()) {
             return value
         }
