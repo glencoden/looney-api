@@ -3,7 +3,7 @@ import { TLiveEvent } from '../types/TLiveEvent'
 
 const EVENT_IDENTIFIER = '@'
 
-const HIDDEN_WORDS = [ 'confirmed', 'anfrage' ]
+const HIDDEN_WORDS = [ 'confirmed', 'anfrage', 'angefragt' ]
 
 const HIDDEN_WORDS_REGEX = HIDDEN_WORDS.map((word: string) => {
     let matchString = ''
@@ -32,19 +32,23 @@ export const parseGoogleCalendarEvents = (response: TJson | null | undefined): T
     }
 
     response!.data.items.forEach((item: TJson) => {
-        if (typeof item?.summary !== 'string' || typeof item?.start?.dateTime !== 'string') {
+        const start = item?.start?.dateTime || item?.start?.date
+
+        if (typeof item?.summary !== 'string' || typeof start !== 'string') {
             console.warn('unexpected google calendar event item', item)
             return
         }
+
         if (!item.summary.includes(EVENT_IDENTIFIER)) {
             return
         }
+
         const [ description, venue ] = item.summary.split(EVENT_IDENTIFIER)
 
         result.push({
             venue: removeHiddenWords(venue),
             description: removeHiddenWords(description),
-            start: item.start.dateTime,
+            start,
         })
     })
 
