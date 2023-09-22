@@ -123,7 +123,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         })
 
     router
-        .get('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
+        .get('/lips/:lip_id?', app.oauth.authorise(), async (req, res) => {
             if (!req.params.lip_id) {
                 const lips = await liveOrm.getAllLips()
 
@@ -164,7 +164,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         })
 
     router
-        .get('/sessions/:session_id', app.oauth.authorise(), async (req, res) => {
+        .get('/sessions/:session_id?', app.oauth.authorise(), async (req, res) => {
             if (!req.params.session_id) {
                 const sessions = await liveOrm.getAllSessions()
 

@@ -1,0 +1,13 @@
+POST http://localhost:5555/live/lips
+Content-Type: application/json
+
+{
+    "sessionId": 0,
+    "songId": 0,
+    "guestGuid": "21c59136-226d-4385-bc6d-dbc30eec7410",
+    "date": "2023-09-22T12:50:01.820Z",
+    "name": "glencoden",
+    "status": "idle"
+}
+
+###
