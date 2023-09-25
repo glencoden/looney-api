@@ -59,7 +59,10 @@ class LiveOrm extends SequelizeOrm {
 
     setSession(session: TSessionCreationAttributes) {
         if (typeof session.id !== 'number') {
-            return this.Session.create(session)
+            return this.Session.create({
+                ...session,
+                deleted: false
+            })
         }
         return this.Session.update(session, { where: { id: session.id } })
     }

@@ -1,4 +1,5 @@
 import express from 'express'
+import crypto from 'crypto'
 import { Server } from 'socket.io'
 import { TApp } from '../../types/TApp'
 import { repertoireOrm } from '../repertoire'
@@ -49,14 +50,19 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             }
 
             const setlist = await repertoireOrm.getSetlist(app.locals.activeSession.setlistId)
+            const allSongs = await repertoireOrm.getAllSongs()
+            // @ts-ignore
+            const songs = setlist[0].songs.map((songId) => allSongs.find((song) => song.id === songId))
             const lips = await liveOrm.getLipsByGuestGuid(guid)
 
             res.json({
                 success: true,
-                sessionId: app.locals.activeSession.id, // always update on client
-                guid, // always update on client
-                setlist,
-                lips,
+                data: {
+                    sessionId: app.locals.activeSession.id, // always update on client
+                    guid, // always update on client
+                    songs,
+                    lips,
+                }
             })
 
             // WEBSOCKET client will open a websocket with its guid
@@ -144,21 +150,27 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             const result = await liveOrm.setLip(req.body)
 
-            res.json(result)
+            res.json({
+                data: result
+            })
 
             // WEBSOCKET emit update to guest
         })
         .put('lips', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.setLip(req.body)
 
-            res.json(result)
+            res.json({
+                data: result
+            })
 
             // WEBSOCKET emit update to guest
         })
         .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.deleteLip(parseInt(req.params.lip_id))
 
-            res.json(result)
+            res.json({
+                data: result
+            })
 
             // WEBSOCKET emit update to guest
         })
@@ -185,7 +197,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             const lips = await liveOrm.getLipsBySessionId(parseInt(req.params.session_id))
 
             app.locals.activeSession = {
-                ...session,
+                id: session[0].id,
+                setlistId: session[0].setlistId,
+                date: session[0].date,
+                title: session[0].title,
                 lips,
                 guests: lips.reduce((result: string[], lip) => {
                     if (!result.includes(lip.guestGuid)) {
@@ -206,17 +221,23 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         .post('/sessions', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.setSession(req.body)
 
-            res.json(result)
+            res.json({
+                data: result
+            })
         })
         .put('/sessions', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.setSession(req.body)
 
-            res.json(result)
+            res.json({
+                data: result
+            })
         })
         .delete('/sessions/:session_id', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.deleteSession(parseInt(req.params.session_id))
 
-            res.json(result)
+            res.json({
+                data: result
+            })
         })
 
     socketServer.then((io) => {

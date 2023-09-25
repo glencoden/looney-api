@@ -4,7 +4,7 @@ export type TSession = {
     id: number
     setlistId: number
     date: string
-    name: string
+    title: string
     deleted: boolean
 }
 

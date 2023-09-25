@@ -1,10 +1,11 @@
 import { Optional } from 'sequelize'
+import { TSong } from './TSong'
 
 export type TSetlist = {
     id: number
     toolKey?: string
     title: string
-    songs: number[]
+    songs: TSong['id'][]
     songsByToolKeyId: string[]
     published: boolean
 }
