@@ -53,6 +53,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             const allSongs = await repertoireOrm.getAllSongs()
             // @ts-ignore
             const songs = setlist[0].songs.map((songId) => allSongs.find((song) => song.id === songId))
+
             const lips = await liveOrm.getLipsByGuestGuid(guid)
 
             res.json({
@@ -90,7 +91,14 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
-            const result = await liveOrm.setLip(req.body)
+            const result = await liveOrm.setLip({
+                sessionId: app.locals.activeSession.id,
+                songId: req.body.songId,
+                guestGuid: req.params.guid,
+                date: new Date().toISOString(),
+                name: req.body.name,
+                status: LipStatus.IDLE,
+            })
 
             res.json({
                 success: true,
