@@ -3,28 +3,23 @@ import crypto from 'crypto'
 import { Server, Socket } from 'socket.io'
 import { TApp } from '../../types/TApp'
 import { repertoireOrm } from '../repertoire'
+import { SocketBossToServer } from './enums/SocketBossToServer'
+import { SocketGuestToServer } from './enums/SocketGuestToServer'
 import { LipStatus } from './enums/LipStatus'
+import { SocketServerToBoss } from './enums/SocketServerToBoss'
+import { SocketServerToGuest } from './enums/SocketServerToGuest'
 import { liveOrm } from './index'
 import { TLip } from './types/TLip'
 
 const MAX_LIPS_PER_GUEST = 3
 
-const DELETE_MESSAGES = [
-    'Diesen Song haben wir heute Abend schon zu oft gehört. Damit der Abend abwechslungsreich bleibt, kommst du damit heute Abend nicht dran.',
-    'Es gibt so viele Anmeldungen vor dir, dass wir es heute Abend leider nicht schaffen, dich mit diesem Song auf die Bühne zu holen.',
-    'Da stimmt doch was nicht!',
-]
-
-// TODO: put the following on app.locals
-
-let bossSocket: Socket | null = null
-
-const guestSockets: Socket[] = []
-const socketByGuid: { [guid: string]: Socket['id'] } = {}
-
 export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     app.locals.activeSession = null // session, lips and guests
     app.locals.lipsPerIP = {} // [sessionID][ip] = date[]
+
+    app.locals.bossSocket = null
+    app.locals.guestSockets = []
+    app.locals.socketByGuid = {} // { [guid]: socketId }
 
     const router = express.Router()
 
@@ -118,8 +113,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 data: result,
             })
 
-            if (bossSocket !== null) {
-                bossSocket.emit('new-lip', result)
+            if (app.locals.bossSocket !== null) {
+                app.locals.bossSocket.emit(SocketServerToBoss.ADD_LIP, result)
             }
         })
         .delete('/guest/:guid/:lip_id', async (req, res) => {
@@ -187,14 +182,14 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             })
 
             // @ts-ignore
-            const socketId = socketByGuid[result.guestGuid]
-            const socket = guestSockets.find((s) => s.id === socketId)
+            const socketId = app.locals.socketByGuid[result.guestGuid]
+            const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
 
             if (socket) {
-                socket.emit('update-lip', result)
+                socket.emit(SocketServerToGuest.UPDATE_LIP, result)
             }
         })
-        .delete('/lips/:lip_id/:message_index', app.oauth.authorise(), async (req, res) => {
+        .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.deleteLip(parseInt(req.params.lip_id))
 
             res.json({
@@ -202,13 +197,15 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             })
 
             // @ts-ignore
-            const socketId = socketByGuid[result.guestGuid]
-            const socket = guestSockets.find((s) => s.id === socketId)
+            const socketId = app.locals.socketByGuid[result.guestGuid]
+            const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
+
+            const [ , message ] = decodeURI(req.query.message as string).split('=')
 
             if (socket) {
-                socket.emit('delete-lip', {
+                socket.emit(SocketServerToGuest.DELETE_LIP, {
                     data: result,
-                    message: DELETE_MESSAGES[Math.min(parseInt(req.params.message_index), DELETE_MESSAGES.length - 1)],
+                    message,
                 })
             }
         })
@@ -252,8 +249,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 data: app.locals.activeSession,
             })
 
-            guestSockets.forEach((socket) => {
-                socket.emit('start-session')
+            app.locals.guestSockets.forEach((socket: Socket) => {
+                socket.emit(SocketServerToGuest.SESSION_START)
             })
         })
         .post('/sessions', app.oauth.authorise(), async (req, res) => {
@@ -281,31 +278,37 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     socketServer.then((io) => {
         io.on('connection', (socket) => {
             socket.on('disconnect', () => {
-                const index = guestSockets.findIndex((s) => s.id === socket.id)
+                const index = app.locals.guestSockets.findIndex((s: Socket) => s.id === socket.id)
 
                 if (index !== -1) {
-                    guestSockets.splice(index, 1)
+                    app.locals.guestSockets.splice(index, 1)
                 }
             })
 
-            socket.on('join', (guid) => {
-                socketByGuid[guid] = socket.id
+            socket.on(SocketGuestToServer.GUEST_JOIN, (guid) => {
+                app.locals.socketByGuid[guid] = socket.id
             })
 
-            socket.on('boss', () => {
-                const index = guestSockets.findIndex((s) => s.id === socket.id)
+            socket.on(SocketBossToServer.BOSS_JOIN, () => {
+                const index = app.locals.guestSockets.findIndex((s: Socket) => s.id === socket.id)
 
-                if (index !== -1) {
-                    bossSocket = guestSockets[index]
-                    guestSockets.splice(index, 1)
+                if (index === -1) {
+                    return
+                }
 
-                    bossSocket.on('disconnect', () => {
-                        app.locals.activeSession = null
+                app.locals.bossSocket = app.locals.guestSockets[index]
+                app.locals.guestSockets.splice(index, 1)
+
+                app.locals.bossSocket.on('disconnect', () => {
+                    app.locals.activeSession = null
+
+                    app.locals.guestSockets.forEach((socket: Socket) => {
+                        socket.emit(SocketServerToGuest.SESSION_END)
                     })
-                }
+                })
             })
 
-            guestSockets.push(socket)
+            app.locals.guestSockets.push(socket)
         })
 
         // Do websocket updates handle the activeSession data?
