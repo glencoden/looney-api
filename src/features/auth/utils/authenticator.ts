@@ -12,6 +12,10 @@ function sendResponse(res, message, error) {
 }
 
 function getAllUsers(req, res) {
+    if (req.body.adminPassword !== process.env.ADMIN_PASSWORD) {
+        sendResponse(res, 'wrong admin password', true)
+        return
+    }
     authOrm.getAllUsers()
         .then(users => {
             res.json({
@@ -25,6 +29,10 @@ function getAllUsers(req, res) {
 }
 
 function registerUser(req, res) {
+    if (req.body.adminPassword !== process.env.ADMIN_PASSWORD) {
+        sendResponse(res, 'wrong admin password', true)
+        return
+    }
     if (!req.body.userName) {
         sendResponse(res, 'unkown userName', true)
         return
@@ -51,6 +59,10 @@ function registerUser(req, res) {
 }
 
 function deleteUser(req, res) {
+    if (req.body.adminPassword !== process.env.ADMIN_PASSWORD) {
+        sendResponse(res, 'wrong admin password', true)
+        return
+    }
     if (!req.body.id) {
         sendResponse(res, 'unkown userName', true)
         return

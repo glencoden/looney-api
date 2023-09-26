@@ -6,6 +6,26 @@ import { repertoireOrm } from './index'
 export function repertoireRouter(app: TApp) {
     const router = express.Router()
 
+    // songs
+
+    router.route('/songs/:id?')
+        .get(async (req, res) => {
+            if (!req.query.id) {
+                const songs = await repertoireOrm.getAllSongs()
+
+                res.json({
+                    data: songs,
+                })
+                return
+            }
+
+            const song = await repertoireOrm.getSong(parseInt(`${req.query.id}`))
+
+            res.json({
+                data: song,
+            })
+        })
+
     // setlist
 
     router.route('/setlist')

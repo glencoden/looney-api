@@ -28,6 +28,16 @@ class RepertoireOrm extends SequelizeOrm {
         this.Song = this.sequelize.define('Song', songModel)
     }
 
+    // route: songs
+
+    getAllSongs() {
+        return this.Song.findAll()
+    }
+
+    getSong(id: TSong['id']) {
+        return this.Song.findAll({ where: { id } })
+    }
+
     // route: setlist
 
     getAllSetlists() {
@@ -35,6 +45,7 @@ class RepertoireOrm extends SequelizeOrm {
     }
 
     getSetlist(id: TSetlist['id']) {
+        console.log('id', typeof id, id)
         return this.Setlist.findAll({ where: { id } })
     }
 
