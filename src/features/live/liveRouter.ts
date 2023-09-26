@@ -15,6 +15,8 @@ const DELETE_MESSAGES = [
     'Da stimmt doch was nicht!',
 ]
 
+// TODO: put the following on app.locals
+
 let bossSocket: Socket | null = null
 
 const guestSockets: Socket[] = []
@@ -294,6 +296,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 if (index !== -1) {
                     bossSocket = guestSockets[index]
                     guestSockets.splice(index, 1)
+
+                    bossSocket.on('disconnect', () => {
+                        app.locals.activeSession = null
+                    })
                 }
             })
 
