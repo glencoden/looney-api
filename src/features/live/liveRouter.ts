@@ -69,13 +69,15 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             const lips = await liveOrm.getLipsByGuestGuid(guid)
 
+            const activeLips = lips.filter((lip: TLip) => lip.status === LipStatus.IDLE || lip.status === LipStatus.STAGED || lip.status === LipStatus.LIVE)
+
             res.json({
                 success: true,
                 data: {
                     sessionId: app.locals.activeSession.id, // always update on client
                     guid, // always update on client
                     songs,
-                    lips,
+                    lips: activeLips,
                 },
             })
         })
