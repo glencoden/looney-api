@@ -248,13 +248,13 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }, []),
             }
 
-            // WEBSOCKET emit start event to all guests
-
             res.json({
                 data: app.locals.activeSession,
             })
 
-            // WEBSOCKET boss client connects
+            guestSockets.forEach((socket) => {
+                socket.emit('start-session')
+            })
         })
         .post('/sessions', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.setSession(req.body)
