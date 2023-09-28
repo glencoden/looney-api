@@ -179,12 +179,14 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 data: result,
             })
 
+            const lip = await liveOrm.getLip(req.body.id)
+
             // @ts-ignore
             const socketId = app.locals.socketByGuid[result.guestGuid]
             const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
 
             if (socket) {
-                socket.emit(SocketServerToGuest.UPDATE_LIP, result)
+                socket.emit(SocketServerToGuest.UPDATE_LIP, lip[0])
             }
         })
         .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
@@ -196,12 +198,14 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 data: result,
             })
 
+            const lip = await liveOrm.getLip(parseInt(req.params.lip_id))
+
             // @ts-ignore
             const socketId = app.locals.socketByGuid[result.guestGuid]
             const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
 
             if (socket) {
-                socket.emit(SocketServerToGuest.DELETE_LIP, result)
+                socket.emit(SocketServerToGuest.DELETE_LIP, lip[0])
             }
         })
 
