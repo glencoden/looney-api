@@ -172,7 +172,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             // WEBSOCKET emit update to guest
         })
-        .put('lips', app.oauth.authorise(), async (req, res) => {
+        .put('/lips', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.setLip(req.body)
 
             res.json({
