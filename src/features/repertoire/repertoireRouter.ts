@@ -10,7 +10,7 @@ export function repertoireRouter(app: TApp) {
 
     router.route('/songs/:id?')
         .get(async (req, res) => {
-            if (!req.query.id) {
+            if (!req.params.id) {
                 const songs = await repertoireOrm.getAllSongs()
 
                 res.json({
@@ -19,7 +19,7 @@ export function repertoireRouter(app: TApp) {
                 return
             }
 
-            const song = await repertoireOrm.getSong(parseInt(`${req.query.id}`))
+            const song = await repertoireOrm.getSong(parseInt(`${req.params.id}`))
 
             res.json({
                 data: song,

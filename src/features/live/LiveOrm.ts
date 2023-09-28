@@ -43,8 +43,8 @@ class LiveOrm extends SequelizeOrm {
         return this.Lip.update(lip, { where: { id: lip.id } })
     }
 
-    deleteLip(id: TLip['id']) {
-        return this.Lip.update({ status: LipStatus.DELETED }, { where: { id } })
+    deleteLip(id: TLip['id'], message: string) {
+        return this.Lip.update({ status: LipStatus.DELETED, message }, { where: { id } })
     }
 
     // sessions
@@ -61,7 +61,7 @@ class LiveOrm extends SequelizeOrm {
         if (typeof session.id !== 'number') {
             return this.Session.create({
                 ...session,
-                deleted: false
+                deleted: false,
             })
         }
         return this.Session.update(session, { where: { id: session.id } })
