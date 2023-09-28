@@ -198,7 +198,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 data: result,
             })
 
-            const lip = await liveOrm.getLip(req.body.id)
+            const lip = await liveOrm.getLip(parseInt(req.params.lip_id))
 
             // @ts-ignore
             const socketId = app.locals.socketByGuid[result.guestGuid]
