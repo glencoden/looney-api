@@ -164,15 +164,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         .post('/lips', app.oauth.authorise(), async (req, res) => {
             // TODO: for this route to make sense, boss would have to be able to create a lip for a guest, using its guid
 
-            const result = await liveOrm.setLip(req.body)
-
-            res.json({
-                data: result,
-            })
-
-            // WEBSOCKET emit update to guest
-        })
-        .put('/lips', app.oauth.authorise(), async (req, res) => {
+            // TODO: implement create when no lip.id
             const result = await liveOrm.setLip(req.body)
 
             const lip = await liveOrm.getLip(req.body.id)
@@ -187,11 +179,25 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             res.json({
                 data: result,
-                lip,
-                socketId,
-                socket,
             })
         })
+        // .put('/lips', app.oauth.authorise(), async (req, res) => {
+        //     const result = await liveOrm.setLip(req.body)
+        //
+        //     const lip = await liveOrm.getLip(req.body.id)
+        //
+        //     // @ts-ignore
+        //     const socketId = app.locals.socketByGuid[lip[0].guestGuid]
+        //     const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
+        //
+        //     if (socket) {
+        //         socket.emit(SocketServerToGuest.UPDATE_LIP, lip[0])
+        //     }
+        //
+        //     res.json({
+        //         data: result,
+        //     })
+        // })
         .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
             const [ , message ] = decodeURI(req.query.message as string).split('=')
 
