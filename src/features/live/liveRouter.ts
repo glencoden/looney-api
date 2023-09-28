@@ -241,24 +241,12 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             const lips = await liveOrm.getLipsBySessionId(parseInt(req.params.session_id))
 
-            const indexes: { [status: string]: number } = {}
-
             app.locals.activeSession = {
                 id: session[0].id,
                 setlistId: session[0].setlistId,
                 date: session[0].date,
                 title: session[0].title,
-                lips: lips.map((lip) => {
-                    if (typeof indexes[lip.status] === 'undefined') {
-                        indexes[lip.status] = 0
-                    } else {
-                        indexes[lip.status] = indexes[lip.status] + 1
-                    }
-                    return {
-                        ...lip,
-                        index: indexes[lip.status],
-                    }
-                }),
+                lips,
                 guests: lips.reduce((result: string[], lip) => {
                     if (!result.includes(lip.guestGuid)) {
                         result.push(lip.guestGuid)
