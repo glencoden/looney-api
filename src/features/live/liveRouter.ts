@@ -177,6 +177,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 socket.emit(SocketServerToGuest.UPDATE_LIP, lip[0])
             }
 
+            // if tool socket select lip.songId
+
             res.json({
                 data: result,
             })
