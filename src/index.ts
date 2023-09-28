@@ -57,7 +57,7 @@ const main = () => {
     const io = new Server(server, {
             cors: {
                 origin: '*',
-                methods: [ 'GET', 'POST' ],
+                methods: [ 'GET', 'POST', 'PUT', 'DELETE' ],
             },
         },
     )
