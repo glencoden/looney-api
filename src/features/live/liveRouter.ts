@@ -243,22 +243,22 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             const indexes: { [status: string]: number } = {}
 
-            lips.forEach((lip) => {
-                if (typeof indexes[lip.status] === 'undefined') {
-                    indexes[lip.status] = 0
-                }
-
-                lip.index = indexes[lip.status]
-
-                indexes[lip.status] = indexes[lip.status] + 1
-            })
-
             app.locals.activeSession = {
                 id: session[0].id,
                 setlistId: session[0].setlistId,
                 date: session[0].date,
                 title: session[0].title,
-                lips,
+                lips: lips.map((lip) => {
+                    if (typeof indexes[lip.status] === 'undefined') {
+                        indexes[lip.status] = 0
+                    } else {
+                        indexes[lip.status] = indexes[lip.status] + 1
+                    }
+                    return {
+                        ...lip,
+                        index: indexes[lip.status],
+                    }
+                }),
                 guests: lips.reduce((result: string[], lip) => {
                     if (!result.includes(lip.guestGuid)) {
                         result.push(lip.guestGuid)
