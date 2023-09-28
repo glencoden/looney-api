@@ -64,15 +64,13 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             const lips = await liveOrm.getLipsByGuestGuid(guid)
 
-            const activeLips = lips.filter((lip: TLip) => lip.status === LipStatus.IDLE || lip.status === LipStatus.STAGED || lip.status === LipStatus.LIVE)
-
             res.json({
                 success: true,
                 data: {
                     sessionId: app.locals.activeSession.id, // always update on client
                     guid, // always update on client
                     songs,
-                    lips: activeLips,
+                    lips,
                 },
             })
         })
@@ -136,7 +134,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
-            const result = await liveOrm.deleteLip(parseInt(req.params.lip_id))
+            const result = await liveOrm.deleteLip(parseInt(req.params.lip_id), 'deleted by guest')
 
             res.json({
                 success: true,
@@ -190,7 +188,9 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             }
         })
         .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
-            const result = await liveOrm.deleteLip(parseInt(req.params.lip_id))
+            const [ , message ] = decodeURI(req.query.message as string).split('=')
+
+            const result = await liveOrm.deleteLip(parseInt(req.params.lip_id), message)
 
             res.json({
                 data: result,
@@ -200,13 +200,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             const socketId = app.locals.socketByGuid[result.guestGuid]
             const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
 
-            const [ , message ] = decodeURI(req.query.message as string).split('=')
-
             if (socket) {
-                socket.emit(SocketServerToGuest.DELETE_LIP, {
-                    data: result,
-                    message,
-                })
+                socket.emit(SocketServerToGuest.DELETE_LIP, result)
             }
         })
 
