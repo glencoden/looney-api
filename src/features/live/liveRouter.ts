@@ -178,7 +178,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             const lip = await liveOrm.getLip(req.body.id)
 
             // @ts-ignore
-            const socketId = app.locals.socketByGuid[lip.guestGuid]
+            const socketId = app.locals.socketByGuid[lip[0].guestGuid]
             const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
 
             if (socket) {
@@ -200,7 +200,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             const lip = await liveOrm.getLip(parseInt(req.params.lip_id))
 
             // @ts-ignore
-            const socketId = app.locals.socketByGuid[lip.guestGuid]
+            const socketId = app.locals.socketByGuid[lip[0].guestGuid]
             const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
 
             if (socket) {
