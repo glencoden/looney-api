@@ -239,12 +239,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         .get('/sessions/:session_id/start', app.oauth.authorise(), async (req, res) => {
             const session = await liveOrm.getSession(parseInt(req.params.session_id))
 
-            const indexes: { [status: string]: number } = {}
-
             const lips = await liveOrm.getLipsBySessionId(parseInt(req.params.session_id))
 
             lips.forEach((lip) => {
-                if (!indexes[lip.status]) {
+                if (typeof indexes[lip.status] === 'undefined') {
                     indexes[lip.status] = 0
                 }
 
@@ -252,6 +250,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 indexes[lip.status] = indexes[lip.status] + 1
             })
+
+            const indexes: { [status: string]: number } = {}
 
             app.locals.activeSession = {
                 id: session[0].id,
