@@ -10,6 +10,7 @@ export type TLip = {
     name: string
     status: LipStatus
     message?: string
+    index?: number
 }
 
 export type TLipCreationAttributes = Optional<TLip, 'id'>
