@@ -246,7 +246,16 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 setlistId: session[0].setlistId,
                 date: session[0].date,
                 title: session[0].title,
-                lips,
+                lips: lips.map((lip) => ({
+                    id: lip.id,
+                    sessionId: lip.sessionId,
+                    songId: lip.songId,
+                    guestGuid: lip.guestGuid,
+                    date: lip.date,
+                    name: lip.name,
+                    status: lip.status,
+                    message: lip.message,
+                })),
                 guests: lips.reduce((result: string[], lip) => {
                     if (!result.includes(lip.guestGuid)) {
                         result.push(lip.guestGuid)
