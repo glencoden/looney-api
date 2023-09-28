@@ -2,7 +2,6 @@ import express from 'express'
 import path from 'path'
 import { InitType } from './db/enums/InitType'
 import { authOrm, authRouter } from './features/auth'
-import { bindAutoToolServer } from './features/autoTool'
 import { calendarRouter } from './features/calendar'
 import { liveOrm, liveRouter } from './features/live'
 import { repertoireOrm, repertoireRouter } from './features/repertoire'
@@ -24,8 +23,6 @@ let resolveSocketServer: ((value: Server) => void) | null = null
 const socketServer: Promise<Server> = new Promise((resolve) => {
     resolveSocketServer = resolve
 })
-
-bindAutoToolServer(socketServer)
 
 /**
  * Middle ware
