@@ -30,7 +30,7 @@ export const getEvents = () => {
     return new Promise((resolve) => {
         calendar.events.list({
             calendarId: GOOGLE_CALENDAR_ID,
-            timeMin: (new Date()).toISOString(),
+            timeMin: (new Date(Date.now() - 1000 * 60 * 60 * 24 * 180)).toISOString(),
             maxResults: 99,
             singleEvents: true,
             orderBy: 'startTime',
