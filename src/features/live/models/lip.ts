@@ -18,17 +18,25 @@ export default {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    date: {
-        type: DataTypes.STRING,
-        allowNull: false,
-    },
-    name: {
+    guestName: {
         type: DataTypes.STRING,
         allowNull: false,
     },
     status: {
         type: DataTypes.STRING,
         allowNull: false,
+    },
+    deletedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+    },
+    liveAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+    },
+    doneAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
     },
     message: DataTypes.STRING,
 } as ModelAttributes

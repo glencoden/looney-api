@@ -1,147 +1,161 @@
-import express from 'express'
 import crypto from 'crypto'
+import express from 'express'
 import { Server, Socket } from 'socket.io'
 import { TApp } from '../../types/TApp'
 import { repertoireOrm } from '../repertoire'
-import { SocketBossToServer } from './enums/SocketBossToServer'
-import { SocketGuestToServer } from './enums/SocketGuestToServer'
 import { LipStatus } from './enums/LipStatus'
-import { SocketServerToBoss } from './enums/SocketServerToBoss'
-import { SocketServerToGuest } from './enums/SocketServerToGuest'
+import { ServerErrors } from './enums/ServerErrors'
+import { SocketEvents } from './enums/SocketEvents'
 import { liveOrm } from './index'
 import { TLip } from './types/TLip'
 
-const MAX_LIPS_PER_GUEST = 3
+type GuestSocket = Socket & { guid: string }
+
+const MAX_REQUESTS_PER_IP_PER_MINUTE = 5
+const ACTIVE_SESSION_POLL_INTERVAL = 1000 * 60
+
+let pollActiveSessionTimeoutId: NodeJS.Timeout | null = null
 
 export function liveRouter(app: TApp, socketServer: Promise<Server>) {
-    app.locals.activeSession = null // session, lips and guests
-    app.locals.lipsPerIP = {} // [sessionID][ip] = date[]
+
+    // poll active session
+
+    if (pollActiveSessionTimeoutId !== null) {
+        clearTimeout(pollActiveSessionTimeoutId)
+    }
+
+    const pollActiveSession = async () => {
+        const session = await liveOrm.getActiveSession()
+
+        if (session.length === 0) {
+            app.locals.session = null
+
+            if (app.locals.bossSocket !== null) {
+                app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_END)
+            }
+
+            app.locals.guestSockets.forEach((socket: Socket) => {
+                socket.emit(SocketEvents.SERVER_ALL_SESSION_END)
+            })
+        } else if (app.locals.session?.id !== session[0].id) {
+            const lips = await liveOrm.getLipsBySessionId(session[0].id)
+
+            app.locals.session = {
+                id: session[0].id,
+                guid: session[0].guid,
+                setlistId: session[0].setlistId,
+                startDate: session[0].startDate,
+                endDate: session[0].endDate,
+                title: session[0].title,
+
+                isRunning: false,
+
+                lips: lips.map((lip) => ({
+                    id: lip.id,
+                    sessionId: lip.sessionId,
+                    songId: lip.songId,
+                    guestGuid: lip.guestGuid,
+                    guestName: lip.guestName,
+                    deletedAt: lip.deletedAt,
+                    liveAt: lip.liveAt,
+                    doneAt: lip.doneAt,
+                    status: lip.status,
+                    message: lip.message,
+                })),
+
+                guests: lips.reduce((result: string[], lip) => {
+                    if (!result.includes(lip.guestGuid)) {
+                        result.push(lip.guestGuid)
+                    }
+                    return result
+                }, []),
+            }
+
+            if (app.locals.bossSocket !== null) {
+                app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_START)
+            }
+
+            app.locals.guestSockets.forEach((socket: Socket) => {
+                socket.emit(SocketEvents.SERVER_ALL_SESSION_START)
+            })
+        }
+
+        console.log(JSON.stringify(app.locals.session))
+
+        pollActiveSessionTimeoutId = setTimeout(pollActiveSession, ACTIVE_SESSION_POLL_INTERVAL)
+    }
+
+    pollActiveSession()
+
+
+    // safety
+
+    app.locals.lipsPerIP = null // [ip]: date[] | null
+
+
+    // sockets
+
+    app.locals.sockets = []
 
     app.locals.bossSocket = null
+    app.locals.toolSocket = null
     app.locals.guestSockets = []
-    app.locals.socketByGuid = {} // { [guid]: socketId }
+
+
+    // session
+
+    app.locals.session = null // session, lips and guests
+
+
+    // routes
 
     const router = express.Router()
 
-    router.route('/test')
-        .get((req, res) => {
-            const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
-
-            res.json({
-                headers: req.headers['x-forwarded-for'] || 'empty',
-                socket: req.socket.remoteAddress || 'empty',
-                ip,
-            })
-        })
-
     router
-        .get('/protocol', app.oauth.authorise(), (_req, res) => {
-            res.json(app.locals.lipsPerIP)
-        })
+        .get('/sessions/:session_id?', app.oauth.authorise(), async (req, res) => {
+            if (!req.params.session_id) {
+                const sessions = await liveOrm.getAllSessions()
 
-    router
-        .get('/guest/:guid?', async (req, res) => {
-            if (app.locals.activeSession === null) {
                 res.json({
-                    success: false,
-                    message: 'No active session.',
+                    data: sessions,
+                    error: null,
                 })
                 return
             }
 
-            let guid = req.params.guid
-
-            if (!guid || !app.locals.activeSession.guests.includes(guid)) {
-                guid = crypto.randomUUID()
-
-                app.locals.activeSession.guests.push(guid)
-            }
-
-            const setlist = await repertoireOrm.getSetlist(app.locals.activeSession.setlistId)
-            const allSongs = await repertoireOrm.getAllSongs()
-            // @ts-ignore
-            const songs = setlist[0].songs.map((songId) => allSongs.find((song) => song.id === songId))
-
-            const lips = await liveOrm.getLipsByGuestGuid(guid)
+            const session = await liveOrm.getSession(parseInt(req.params.session_id))
 
             res.json({
-                success: true,
-                data: {
-                    sessionId: app.locals.activeSession.id, // always update on client
-                    guid, // always update on client
-                    songs,
-                    lips,
-                },
+                data: session,
+                error: null,
             })
         })
-        .post('/guest/:guid', async (req, res) => {
-            // TODO: block IP if to many requests in too little time
-
-            if (app.locals.activeSession === null) {
-                res.json({
-                    success: false,
-                    message: 'No active session.',
-                })
-                return
-            }
-
-            const lips = await liveOrm.getLipsByGuestGuid(req.params.guid)
-
-            const activeLips = lips.filter((lip: TLip) => lip.status === LipStatus.IDLE || lip.status === LipStatus.STAGED || lip.status === LipStatus.LIVE)
-
-            if (activeLips.length >= MAX_LIPS_PER_GUEST) {
-                res.json({
-                    success: false,
-                    message: `Max lips per guest limit of ${MAX_LIPS_PER_GUEST} reached.`,
-                })
-                return
-            }
-
-            const result = await liveOrm.setLip({
-                sessionId: app.locals.activeSession.id,
-                songId: req.body.songId,
-                guestGuid: req.params.guid,
-                date: new Date().toISOString(),
-                name: req.body.name,
-                status: LipStatus.IDLE,
+        .post('/sessions', app.oauth.authorise(), async (req, res) => {
+            const result = await liveOrm.createSession({
+                ...req.body,
+                guid: crypto.randomUUID(),
             })
 
             res.json({
-                success: true,
                 data: result,
+                error: null,
             })
-
-            if (app.locals.bossSocket !== null) {
-                app.locals.bossSocket.emit(SocketServerToBoss.ADD_LIP, result)
-            }
         })
-        .delete('/guest/:guid/:lip_id', async (req, res) => {
-            if (app.locals.activeSession === null) {
-                res.json({
-                    success: false,
-                    message: 'No active session.',
-                })
-                return
-            }
-
-            const lips = await liveOrm.getLipsByGuestGuid(req.params.guid)
-
-            if (lips.findIndex((lip: TLip) => lip.id === parseInt(req.params.lip_id)) === -1) {
-                res.json({
-                    success: false,
-                    message: 'Lip to delete not found.',
-                })
-                return
-            }
-
-            const result = await liveOrm.deleteLip(parseInt(req.params.lip_id), 'deleted by guest')
+        .put('/sessions', app.oauth.authorise(), async (req, res) => {
+            const result = await liveOrm.setSession(req.body)
 
             res.json({
-                success: true,
                 data: result,
+                error: null,
             })
+        })
+        .delete('/sessions/:session_id', app.oauth.authorise(), async (req, res) => {
+            const result = await liveOrm.deleteSession(parseInt(req.params.session_id))
 
-            // WEBSOCKET emits update to boss
+            res.json({
+                data: result,
+                error: null,
+            })
         })
 
     router
@@ -151,6 +165,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 res.json({
                     data: lips,
+                    error: null,
                 })
                 return
             }
@@ -159,191 +174,322 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             res.json({
                 data: lip,
+                error: null,
             })
         })
-        .post('/lips', app.oauth.authorise(), async (req, res) => {
-            // TODO: for this route to make sense, boss would have to be able to create a lip for a guest, using its guid
+        .post('/lips', app.oauth.authorise(), async (_req, res) => {
+            // For this route to make sense, boss would have to be able to create a lip for a guest, using its guid
 
-            // TODO: implement create when no lip.id
-            const result = await liveOrm.setLip(req.body)
+            res.send('Not implemented.')
+        })
+        .put('/lips', app.oauth.authorise(), async (req, res) => {
+            await liveOrm.setLip(req.body)
 
             const lip = await liveOrm.getLip(req.body.id)
 
-            // @ts-ignore
-            const socketId = app.locals.socketByGuid[lip[0].guestGuid]
-            const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
+            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lip[0].guestGuid)
 
             if (socket) {
-                socket.emit(SocketServerToGuest.UPDATE_LIP, lip[0])
+                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lip[0])
             }
 
-            // if tool socket select lip.songId
-
             res.json({
-                data: result,
+                data: lip[0],
+                error: null,
             })
         })
-        // .put('/lips', app.oauth.authorise(), async (req, res) => {
-        //     const result = await liveOrm.setLip(req.body)
-        //
-        //     const lip = await liveOrm.getLip(req.body.id)
-        //
-        //     // @ts-ignore
-        //     const socketId = app.locals.socketByGuid[lip[0].guestGuid]
-        //     const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
-        //
-        //     if (socket) {
-        //         socket.emit(SocketServerToGuest.UPDATE_LIP, lip[0])
-        //     }
-        //
-        //     res.json({
-        //         data: result,
-        //     })
-        // })
         .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
-            // TODO this doesn't work because socket.io doesn't allow cors with delete requests
             const [ , message ] = decodeURI(req.query.message as string).split('=')
 
-            const result = await liveOrm.deleteLip(parseInt(req.params.lip_id), message)
+            await liveOrm.setLip({
+                id: parseInt(req.params.lip_id),
+                status: LipStatus.DELETED,
+                message,
+            })
 
             const lip = await liveOrm.getLip(parseInt(req.params.lip_id))
 
-            // @ts-ignore
-            const socketId = app.locals.socketByGuid[lip[0].guestGuid]
-            const socket = app.locals.guestSockets.find((s: Socket) => s.id === socketId)
+            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lip[0].guestGuid)
 
             if (socket) {
-                socket.emit(SocketServerToGuest.DELETE_LIP, lip[0])
+                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lip[0])
             }
 
             res.json({
-                data: result,
+                data: lip[0],
+                error: null,
             })
         })
 
     router
-        .get('/sessions/:session_id?', app.oauth.authorise(), async (req, res) => {
-            if (!req.params.session_id) {
-                const sessions = await liveOrm.getAllSessions()
-
+        .get('/guest/:session_guid/:guest_guid?', async (req, res) => {
+            if (app.locals.session === null) {
                 res.json({
-                    data: sessions,
+                    data: null,
+                    error: ServerErrors.NO_ACTIVE_SESSION,
                 })
                 return
             }
 
-            const session = await liveOrm.getSession(parseInt(req.params.session_id))
-
-            res.json({
-                data: session,
-            })
-        })
-        .get('/sessions/:session_id/start', app.oauth.authorise(), async (req, res) => {
-            const session = await liveOrm.getSession(parseInt(req.params.session_id))
-
-            const lips = await liveOrm.getLipsBySessionId(parseInt(req.params.session_id))
-
-            app.locals.activeSession = {
-                id: session[0].id,
-                setlistId: session[0].setlistId,
-                date: session[0].date,
-                title: session[0].title,
-                lips: lips.map((lip) => ({
-                    id: lip.id,
-                    sessionId: lip.sessionId,
-                    songId: lip.songId,
-                    guestGuid: lip.guestGuid,
-                    date: lip.date,
-                    name: lip.name,
-                    status: lip.status,
-                    message: lip.message,
-                })),
-                guests: lips.reduce((result: string[], lip) => {
-                    if (!result.includes(lip.guestGuid)) {
-                        result.push(lip.guestGuid)
-                    }
-                    return result
-                }, []),
+            if (app.locals.session.guid !== req.params.session_guid) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.WRONG_SESSION_GUID,
+                })
+                return
             }
 
-            res.json({
-                data: app.locals.activeSession,
-            })
+            let guid = req.params.guest_guid
 
-            app.locals.guestSockets.forEach((socket: Socket) => {
-                socket.emit(SocketServerToGuest.SESSION_START)
+            if (!guid || !app.locals.session.guests.includes(guid)) {
+                guid = crypto.randomUUID()
+
+                app.locals.session.guests.push(guid)
+            }
+
+            const setlist = await repertoireOrm.getSetlist(app.locals.session.setlistId)
+
+            const allSongs = await repertoireOrm.getAllSongs()
+            // @ts-ignore
+            const songs = setlist[0].songs.map((songId) => allSongs.find((song) => song.id === songId))
+
+            const lips = await liveOrm.getLipsByGuestGuid(guid)
+
+            res.json({
+                data: {
+                    sessionId: app.locals.session.id, // always set response value on client
+                    guid, // always set response value on client
+                    songs,
+                    lips,
+                },
+                error: null,
             })
         })
-        .post('/sessions', app.oauth.authorise(), async (req, res) => {
-            const result = await liveOrm.setSession(req.body)
+        .post('/guest/:session_guid/:guest_guid', async (req, res) => {
+            if (app.locals.session === null) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.NO_ACTIVE_SESSION,
+                })
+                return
+            }
+
+            const rawIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress
+            const ip = (Array.isArray(rawIP) ? rawIP[0] : rawIP) ?? 'unknown'
+
+            if (app.locals.lipsPerIP === null) {
+                app.locals.lipsPerIP = {
+                    [ip]: [ new Date() ],
+                }
+            } else if (app.locals.lipsPerIP[ip] === undefined) {
+                app.locals.lipsPerIP[ip] = [ new Date() ]
+            } else {
+                app.locals.lipsPerIP[ip].push(new Date())
+
+                app.locals.lipsPerIP[ip] = app.locals.lipsPerIP[ip].filter((date: Date) => date.getTime() > new Date().getTime() - 1000 * 60)
+
+                if (app.locals.lipsPerIP[ip].length > MAX_REQUESTS_PER_IP_PER_MINUTE) {
+                    res.json({
+                        data: null,
+                        error: ServerErrors.TOO_MANY_REQUESTS,
+                    })
+                    return
+                }
+            }
+
+            if (app.locals.session.guid !== req.params.session_guid) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.WRONG_SESSION_GUID,
+                })
+                return
+            }
+
+            if (app.locals.session.guests.includes(req.params.guest_guid)) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.WRONG_GUEST_GUID,
+                })
+                return
+            }
+
+            const result = await liveOrm.createLip({
+                sessionId: app.locals.session.id,
+                songId: req.body.songId,
+                guestGuid: req.params.guest_guid,
+                guestName: req.body.name,
+                status: LipStatus.IDLE,
+            })
 
             res.json({
                 data: result,
+                error: null,
             })
+
+            if (app.locals.bossSocket !== null) {
+                app.locals.bossSocket.emit(SocketEvents.SERVER_BOSS_ADD_LIP, result)
+            }
         })
-        .put('/sessions', app.oauth.authorise(), async (req, res) => {
-            const result = await liveOrm.setSession(req.body)
+        .delete('/guest/:session_guid/:guest_guid/:lip_id', async (req, res) => {
+            if (app.locals.session === null) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.NO_ACTIVE_SESSION,
+                })
+                return
+            }
+
+            if (app.locals.session.guid !== req.params.session_guid) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.WRONG_SESSION_GUID,
+                })
+                return
+            }
+
+            if (app.locals.session.guests.includes(req.params.guest_guid)) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.WRONG_GUEST_GUID,
+                })
+                return
+            }
+
+            const lips = await liveOrm.getLipsByGuestGuid(req.params.guest_guid)
+            const lip = lips.find((lip: TLip) => lip.id === parseInt(req.params.lip_id))
+
+            if (!lip) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.NOT_FOUND,
+                })
+                return
+            }
+
+            await liveOrm.setLip({
+                id: parseInt(req.params.lip_id),
+                status: LipStatus.DELETED,
+                message: 'deleted by guest',
+            })
 
             res.json({
-                data: result,
+                data: lip,
+                error: null,
             })
-        })
-        .delete('/sessions/:session_id', app.oauth.authorise(), async (req, res) => {
-            const result = await liveOrm.deleteSession(parseInt(req.params.session_id))
 
-            res.json({
-                data: result,
-            })
+            if (app.locals.bossSocket !== null) {
+                app.locals.bossSocket.emit(SocketEvents.SERVER_BOSS_REMOVE_LIP, lip)
+            }
+        })
+
+    router
+        .get('/qr', async (_req, res) => {
+            const nextSession = await liveOrm.getNextSession()
+
+            if (nextSession.length === 0) {
+                res.send('No upcoming session.')
+                return
+            }
+
+            // TODO
+            // Generate QR code with session guid in url https://lips.looneytunez.de?session=ab435b6f-5a4a-4049-a5b4-b0da3e94a977
+            // Once guest client app gets served via this url, extract the params there and request guest data from server
+
+            res.send('There will be a QR code here.')
+        })
+
+    router
+        .get('/insights/:session_id?', app.oauth.authorise(), (_req, res) => {
+            res.send('There will be some insights here.')
         })
 
     socketServer.then((io) => {
         io.on('connection', (socket) => {
-            socket.on('disconnect', () => {
-                const index = app.locals.guestSockets.findIndex((s: Socket) => s.id === socket.id)
+            app.locals.sockets.push(socket)
 
-                if (index !== -1) {
-                    app.locals.guestSockets.splice(index, 1)
+            socket.on('disconnect', () => {
+                if (app.locals.bossSocket !== null && app.locals.bossSocket.id === socket.id) {
+                    app.locals.bossSocket = null
+                    return
+                }
+
+                if (app.locals.toolSocket !== null && app.locals.toolSocket.id === socket.id) {
+                    app.locals.toolSocket = null
+                    return
+                }
+
+                const socketIndex = app.locals.sockets.findIndex((s: Socket) => s.id === socket.id)
+
+                if (socketIndex !== -1) {
+                    app.locals.sockets.splice(socketIndex, 1)
+                    return
+                }
+
+                const guestSocketIndex = app.locals.guestSockets.findIndex((s: Socket) => s.id === socket.id)
+
+                if (guestSocketIndex !== -1) {
+                    app.locals.guestSockets.splice(guestSocketIndex, 1)
+                    return
                 }
             })
 
-            socket.on(SocketGuestToServer.GUEST_JOIN, (guid) => {
-                app.locals.socketByGuid[guid] = socket.id
+            socket.on(SocketEvents.BOSS_SERVER_JOIN, (_, setIsRunning) => {
+                const index = app.locals.sockets.findIndex((s: Socket) => s.id === socket.id)
+
+                if (index === -1) {
+                    setIsRunning(false)
+                    return
+                }
+
+                app.locals.bossSocket = app.locals.sockets[index]
+
+                app.locals.sockets.splice(index, 1)
+
+                setIsRunning(app.locals.session?.isRunning ?? false)
             })
 
-            socket.on(SocketBossToServer.BOSS_JOIN, () => {
-                const index = app.locals.guestSockets.findIndex((s: Socket) => s.id === socket.id)
+            socket.on(SocketEvents.BOSS_SERVER_RUN_SESSION, () => {
+                if (app.locals.session === null) {
+                    return
+                }
+
+                app.locals.session.isRunning = true
+            })
+
+            socket.on(SocketEvents.BOSS_SERVER_PAUSE_SESSION, () => {
+                if (app.locals.session === null) {
+                    return
+                }
+
+                app.locals.session.isRunning = false
+            })
+
+            socket.on(SocketEvents.TOOL_SERVER_JOIN, () => {
+                const index = app.locals.sockets.findIndex((s: Socket) => s.id === socket.id)
 
                 if (index === -1) {
                     return
                 }
 
-                app.locals.bossSocket = app.locals.guestSockets[index]
-                app.locals.guestSockets.splice(index, 1)
+                app.locals.toolSocket = app.locals.sockets[index]
 
-                app.locals.bossSocket.on('disconnect', () => {
-                    app.locals.activeSession = null
-
-                    app.locals.guestSockets.forEach((socket: Socket) => {
-                        socket.emit(SocketServerToGuest.SESSION_END)
-                    })
-                })
+                app.locals.sockets.splice(index, 1)
             })
 
-            app.locals.guestSockets.push(socket)
+            socket.on(SocketEvents.GUEST_SERVER_JOIN, (guid) => {
+                const index = app.locals.sockets.findIndex((s: Socket) => s.id === socket.id)
+
+                if (index === -1) {
+                    return
+                }
+
+                app.locals.sockets.splice(index, 1)
+                app.locals.guestSockets.push({
+                    ...socket,
+                    guid,
+                })
+            })
         })
-
-        // Do websocket updates handle the activeSession data?
-
-        // BOSS
-
-        // delete active session >> emit delete event
-        // update and delete lips
-        // emit your-turn event
-        // emit show this or that looneytool screen event
-
-        // GUEST
-
-        // add, update and delete lips
     })
 
     return router

@@ -6,12 +6,20 @@ export default {
         autoIncrement: true,
         primaryKey: true,
     },
+    guid: {
+        type: DataTypes.STRING,
+        allowNull: false,
+    },
     setlistId: {
         type: DataTypes.INTEGER,
         allowNull: false,
     },
-    date: {
-        type: DataTypes.STRING,
+    startDate: {
+        type: DataTypes.DATE,
+        allowNull: false,
+    },
+    endDate: {
+        type: DataTypes.DATE,
         allowNull: false,
     },
     title: {

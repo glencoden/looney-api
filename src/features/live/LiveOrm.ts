@@ -1,4 +1,4 @@
-import { ModelDefined } from 'sequelize'
+import { ModelDefined, Op } from 'sequelize'
 import SequelizeOrm from '../../db/SequelizeOrm'
 import { TSequelizeOrmProps } from '../../db/types/TSequelizeOrmProps'
 import { LipStatus } from './enums/LipStatus'
@@ -32,19 +32,28 @@ class LiveOrm extends SequelizeOrm {
         return this.Lip.findAll({ where: { guestGuid } }) as unknown as Promise<TLip[]>
     }
 
+    createLip(lip: TLipCreationAttributes) {
+        return this.Lip.create(lip)
+    }
+
     getLip(id: TLip['id']) {
         return this.Lip.findAll({ where: { id } }) as unknown as Promise<TLip[]>
     }
 
-    setLip(lip: TLipCreationAttributes) {
-        if (typeof lip.id !== 'number') {
-            return this.Lip.create(lip)
+    setLip(lip: Partial<TLipCreationAttributes>) {
+        switch (lip.status) {
+            case LipStatus.DELETED:
+                lip.deletedAt = new Date()
+                break
+            case LipStatus.LIVE:
+                lip.liveAt = new Date()
+                break
+            case LipStatus.DONE:
+                lip.doneAt = new Date()
+                break
         }
-        return this.Lip.update(lip, { where: { id: lip.id } })
-    }
 
-    deleteLip(id: TLip['id'], message: string) {
-        return this.Lip.update({ status: LipStatus.DELETED, message }, { where: { id } })
+        return this.Lip.update(lip, { where: { id: lip.id } })
     }
 
     // sessions
@@ -53,17 +62,45 @@ class LiveOrm extends SequelizeOrm {
         return this.Session.findAll() as unknown as Promise<TSession[]>
     }
 
+    getNextSession() {
+        const currentDate = new Date()
+
+        return this.Session.findAll({
+            where: {
+                startDate: {
+                    [Op.gt]: currentDate,
+                },
+            }
+        }) as unknown as Promise<TSession[]>
+    }
+
+    getActiveSession() {
+        const currentDate = new Date()
+
+        return this.Session.findAll({
+            where: {
+                startDate: {
+                    [Op.lt]: currentDate,
+                },
+                endDate: {
+                    [Op.gt]: currentDate,
+                }
+            }
+        }) as unknown as Promise<TSession[]>
+    }
+
+    createSession(session: TSessionCreationAttributes) {
+        return this.Session.create({
+            ...session,
+            deleted: false,
+        })
+    }
+
     getSession(id: TSession['id']) {
         return this.Session.findAll({ where: { id } }) as unknown as Promise<TSession[]>
     }
 
     setSession(session: TSessionCreationAttributes) {
-        if (typeof session.id !== 'number') {
-            return this.Session.create({
-                ...session,
-                deleted: false,
-            })
-        }
         return this.Session.update(session, { where: { id: session.id } })
     }
 
