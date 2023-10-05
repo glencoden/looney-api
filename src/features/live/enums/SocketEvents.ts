@@ -29,4 +29,5 @@ export enum SocketEvents {
     SERVER_TOOL_SHOW_HOME = 'server-tool-show-home',
     SERVER_TOOL_SHOW_SONG = 'server-tool-show-song',
     SERVER_TOOL_CALL_SINGER = 'server-tool-call-singer',
+    SERVER_TOOL_CONNECT_AUTO = 'server-tool-connect-auto',
 }

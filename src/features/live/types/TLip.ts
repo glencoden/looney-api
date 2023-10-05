@@ -8,6 +8,7 @@ export type TLip = {
     guestGuid: string
     guestName: string
     status: LipStatus
+    index: number
     deletedAt: Date | null
     liveAt: Date | null
     doneAt: Date | null

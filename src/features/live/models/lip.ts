@@ -26,17 +26,12 @@ export default {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    deletedAt: {
-        type: DataTypes.DATE,
-        allowNull: true,
+    index: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
     },
-    liveAt: {
-        type: DataTypes.DATE,
-        allowNull: true,
-    },
-    doneAt: {
-        type: DataTypes.DATE,
-        allowNull: true,
-    },
+    deletedAt: DataTypes.DATE,
+    liveAt: DataTypes.DATE,
+    doneAt: DataTypes.DATE,
     message: DataTypes.STRING,
 } as ModelAttributes

@@ -11,105 +11,30 @@ import { TLip } from './types/TLip'
 
 type GuestSocket = Socket & { guid: string }
 
-const MAX_REQUESTS_PER_IP_PER_MINUTE = 5
+const MAX_REQUESTS_PER_GUEST_PER_MINUTE = 5
 const ACTIVE_SESSION_POLL_INTERVAL = 1000 * 60
 
 let pollActiveSessionTimeoutId: NodeJS.Timeout | null = null
 
 export function liveRouter(app: TApp, socketServer: Promise<Server>) {
-
-    // poll active session
-
-    if (pollActiveSessionTimeoutId !== null) {
-        clearTimeout(pollActiveSessionTimeoutId)
-    }
-
-    const pollActiveSession = async () => {
-        const session = await liveOrm.getActiveSession()
-
-        if (session.length === 0) {
-            app.locals.session = null
-
-            if (app.locals.bossSocket !== null) {
-                app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_END)
-            }
-
-            app.locals.guestSockets.forEach((socket: Socket) => {
-                socket.emit(SocketEvents.SERVER_ALL_SESSION_END)
-            })
-        } else if (app.locals.session?.id !== session[0].id) {
-            const lips = await liveOrm.getLipsBySessionId(session[0].id)
-
-            app.locals.session = {
-                id: session[0].id,
-                guid: session[0].guid,
-                setlistId: session[0].setlistId,
-                startDate: session[0].startDate,
-                endDate: session[0].endDate,
-                title: session[0].title,
-
-                isRunning: false,
-
-                lips: lips.map((lip) => ({
-                    id: lip.id,
-                    sessionId: lip.sessionId,
-                    songId: lip.songId,
-                    guestGuid: lip.guestGuid,
-                    guestName: lip.guestName,
-                    deletedAt: lip.deletedAt,
-                    liveAt: lip.liveAt,
-                    doneAt: lip.doneAt,
-                    status: lip.status,
-                    message: lip.message,
-                })),
-
-                guests: lips.reduce((result: string[], lip) => {
-                    if (!result.includes(lip.guestGuid)) {
-                        result.push(lip.guestGuid)
-                    }
-                    return result
-                }, []),
-            }
-
-            if (app.locals.bossSocket !== null) {
-                app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_START)
-            }
-
-            app.locals.guestSockets.forEach((socket: Socket) => {
-                socket.emit(SocketEvents.SERVER_ALL_SESSION_START)
-            })
-        }
-
-        console.log(JSON.stringify(app.locals.session))
-
-        pollActiveSessionTimeoutId = setTimeout(pollActiveSession, ACTIVE_SESSION_POLL_INTERVAL)
-    }
-
-    pollActiveSession()
-
-
-    // safety
+    app.locals.session = null // session, lips and guests
 
     app.locals.lipsPerIP = null // [ip]: date[] | null
 
-
-    // sockets
+    app.locals.autoToolServerIP = null
 
     app.locals.sockets = []
-
     app.locals.bossSocket = null
     app.locals.toolSocket = null
     app.locals.guestSockets = []
 
-
-    // session
-
-    app.locals.session = null // session, lips and guests
-
-
-    // routes
-
     const router = express.Router()
+
+    //
+    //
+    // SESSION ROUTES
+    //
+    //
 
     router
         .get('/sessions/:session_id?', app.oauth.authorise(), async (req, res) => {
@@ -144,6 +69,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         .put('/sessions', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.setSession(req.body)
 
+            if (req.body.id === app.locals.session?.id) {
+                deleteActiveSession() // which will be set by polling within the next interval and so be updated on all clients
+            }
+
             res.json({
                 data: result,
                 error: null,
@@ -152,11 +81,21 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         .delete('/sessions/:session_id', app.oauth.authorise(), async (req, res) => {
             const result = await liveOrm.deleteSession(parseInt(req.params.session_id))
 
+            if (req.params.session_id == app.locals.session?.id) {
+                deleteActiveSession()
+            }
+
             res.json({
                 data: result,
                 error: null,
             })
         })
+
+    //
+    //
+    // LIP ROUTES
+    //
+    //
 
     router
         .get('/lips/:lip_id?', app.oauth.authorise(), async (req, res) => {
@@ -170,33 +109,43 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
-            const lip = await liveOrm.getLip(parseInt(req.params.lip_id))
+            const lips = await liveOrm.getLip(parseInt(req.params.lip_id))
 
             res.json({
-                data: lip,
+                data: lips,
                 error: null,
             })
         })
         .post('/lips', app.oauth.authorise(), async (_req, res) => {
             // For this route to make sense, boss would have to be able to create a lip for a guest, using its guid
+            // Add lip to current active session
 
             res.send('Not implemented.')
         })
         .put('/lips', app.oauth.authorise(), async (req, res) => {
             await liveOrm.setLip(req.body)
 
-            const lip = await liveOrm.getLip(req.body.id)
+            const lips = await liveOrm.getLip(req.body.id)
 
-            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lip[0].guestGuid)
-
-            if (socket) {
-                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lip[0])
+            if (app.locals.session !== null) {
+                app.locals.session.lips = app.locals.session.lips.map((lip: TLip) => {
+                    if (lip.id === lips[0].id) {
+                        return lips[0]
+                    }
+                    return lip
+                })
             }
 
             res.json({
-                data: lip[0],
+                data: lips[0],
                 error: null,
             })
+
+            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lips[0].guestGuid)
+
+            if (socket) {
+                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lips[0])
+            }
         })
         .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
             const [ , message ] = decodeURI(req.query.message as string).split('=')
@@ -207,19 +156,34 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 message,
             })
 
-            const lip = await liveOrm.getLip(parseInt(req.params.lip_id))
+            const lips = await liveOrm.getLip(parseInt(req.params.lip_id))
 
-            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lip[0].guestGuid)
-
-            if (socket) {
-                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lip[0])
+            if (app.locals.session !== null) {
+                app.locals.session.lips = app.locals.session.lips.map((lip: TLip) => {
+                    if (lip.id === lips[0].id) {
+                        return lips[0]
+                    }
+                    return lip
+                })
             }
 
             res.json({
-                data: lip[0],
+                data: lips[0],
                 error: null,
             })
+
+            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lips[0].guestGuid)
+
+            if (socket) {
+                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lips[0])
+            }
         })
+
+    //
+    //
+    // GUEST ROUTES
+    //
+    //
 
     router
         .get('/guest/:session_guid/:guest_guid?', async (req, res) => {
@@ -288,7 +252,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 app.locals.lipsPerIP[ip] = app.locals.lipsPerIP[ip].filter((date: Date) => date.getTime() > new Date().getTime() - 1000 * 60)
 
-                if (app.locals.lipsPerIP[ip].length > MAX_REQUESTS_PER_IP_PER_MINUTE) {
+                if (app.locals.lipsPerIP[ip].length > MAX_REQUESTS_PER_GUEST_PER_MINUTE) {
                     res.json({
                         data: null,
                         error: ServerErrors.TOO_MANY_REQUESTS,
@@ -320,6 +284,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 guestName: req.body.name,
                 status: LipStatus.IDLE,
             })
+
+            app.locals.session.lips.push(result)
 
             res.json({
                 data: result,
@@ -372,6 +338,13 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 message: 'deleted by guest',
             })
 
+            app.locals.session.lips = app.locals.session.lips.map((prevLip: TLip) => {
+                if (prevLip.id === lip.id) {
+                    return lip
+                }
+                return prevLip
+            })
+
             res.json({
                 data: lip,
                 error: null,
@@ -382,8 +355,14 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             }
         })
 
+    //
+    //
+    // UTIL ROUTES
+    //
+    //
+
     router
-        .get('/qr', async (_req, res) => {
+        .get('/qr_code', async (_req, res) => {
             const nextSession = await liveOrm.getNextSession()
 
             if (nextSession.length === 0) {
@@ -395,13 +374,41 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             // Generate QR code with session guid in url https://lips.looneytunez.de?session=ab435b6f-5a4a-4049-a5b4-b0da3e94a977
             // Once guest client app gets served via this url, extract the params there and request guest data from server
 
+            // auto send mails with QR code to Fabi and Nikolai a while before a session starts
+
             res.send('There will be a QR code here.')
+        })
+
+    router
+        .get('auto_ip', (_req, res) => {
+            res.json({
+                data: app.locals.autoToolServerIP,
+                error: null,
+            })
+        })
+        .post('auto_tool_server_ip', (req, res) => {
+            app.locals.autoToolServerIP = req.body.ip
+
+            res.json({
+                data: app.locals.autoToolServerIP,
+                error: null,
+            })
+
+            if (app.locals.toolSocket !== null) {
+                app.locals.toolSocket.emit(SocketEvents.SERVER_TOOL_CONNECT_AUTO, app.locals.autoToolServerIP)
+            }
         })
 
     router
         .get('/insights/:session_id?', app.oauth.authorise(), (_req, res) => {
             res.send('There will be some insights here.')
         })
+
+    //
+    //
+    // SOCKETS
+    //
+    //
 
     socketServer.then((io) => {
         io.on('connection', (socket) => {
@@ -433,11 +440,12 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }
             })
 
-            socket.on(SocketEvents.BOSS_SERVER_JOIN, (_, setIsRunning) => {
+            socket.on(SocketEvents.BOSS_SERVER_JOIN, (_, setSession) => {
                 const index = app.locals.sockets.findIndex((s: Socket) => s.id === socket.id)
 
                 if (index === -1) {
-                    setIsRunning(false)
+                    console.error('boss socket not found')
+                    setSession(null)
                     return
                 }
 
@@ -445,7 +453,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 app.locals.sockets.splice(index, 1)
 
-                setIsRunning(app.locals.session?.isRunning ?? false)
+                setSession(app.locals.session)
             })
 
             socket.on(SocketEvents.BOSS_SERVER_RUN_SESSION, () => {
@@ -454,6 +462,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }
 
                 app.locals.session.isRunning = true
+
+                // TODO: emit to tool
             })
 
             socket.on(SocketEvents.BOSS_SERVER_PAUSE_SESSION, () => {
@@ -462,6 +472,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }
 
                 app.locals.session.isRunning = false
+
+                // TODO: emit to tool
             })
 
             socket.on(SocketEvents.TOOL_SERVER_JOIN, () => {
@@ -474,6 +486,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 app.locals.toolSocket = app.locals.sockets[index]
 
                 app.locals.sockets.splice(index, 1)
+
+                // TODO: return status of session to tool
             })
 
             socket.on(SocketEvents.GUEST_SERVER_JOIN, (guid) => {
@@ -484,6 +498,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }
 
                 app.locals.sockets.splice(index, 1)
+
                 app.locals.guestSockets.push({
                     ...socket,
                     guid,
@@ -491,6 +506,89 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             })
         })
     })
+
+    //
+    //
+    // ACTIVE SESSION POLL
+    //
+    //
+
+    if (pollActiveSessionTimeoutId !== null) {
+        clearTimeout(pollActiveSessionTimeoutId)
+    }
+
+    const pollActiveSession = async () => {
+        const sessions = await liveOrm.getActiveSession()
+
+        if (sessions.length === 0) {
+            deleteActiveSession()
+        } else if (app.locals.session?.id !== sessions[0].id) {
+            const lips = await liveOrm.getLipsBySessionId(sessions[0].id)
+
+            app.locals.session = {
+                isRunning: false,
+
+                id: sessions[0].id,
+                guid: sessions[0].guid,
+                setlistId: sessions[0].setlistId,
+                startDate: sessions[0].startDate,
+                endDate: sessions[0].endDate,
+                title: sessions[0].title,
+
+                lips: lips.map((lip) => ({
+                    id: lip.id,
+                    sessionId: lip.sessionId,
+                    songId: lip.songId,
+                    guestGuid: lip.guestGuid,
+                    guestName: lip.guestName,
+                    deletedAt: lip.deletedAt,
+                    liveAt: lip.liveAt,
+                    doneAt: lip.doneAt,
+                    status: lip.status,
+                    message: lip.message,
+                })),
+
+                guests: lips.reduce((result: string[], lip) => {
+                    if (!result.includes(lip.guestGuid)) {
+                        result.push(lip.guestGuid)
+                    }
+                    return result
+                }, []),
+            }
+
+            if (app.locals.bossSocket !== null) {
+                app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_START)
+            }
+
+            app.locals.guestSockets.forEach((socket: Socket) => {
+                socket.emit(SocketEvents.SERVER_ALL_SESSION_START)
+            })
+        }
+
+        console.log(JSON.stringify(app.locals.session)) // TODO: remove dev code
+
+        pollActiveSessionTimeoutId = setTimeout(pollActiveSession, ACTIVE_SESSION_POLL_INTERVAL)
+    }
+
+    pollActiveSession()
+
+    //
+    //
+    // HELPERS
+    //
+    //
+
+    const deleteActiveSession = () => {
+        app.locals.session = null
+
+        if (app.locals.bossSocket !== null) {
+            app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_END)
+        }
+
+        app.locals.guestSockets.forEach((socket: Socket) => {
+            socket.emit(SocketEvents.SERVER_ALL_SESSION_END)
+        })
+    }
 
     return router
 }
