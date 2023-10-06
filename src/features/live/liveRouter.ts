@@ -283,6 +283,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 guestGuid: req.params.guest_guid,
                 guestName: req.body.name,
                 status: LipStatus.IDLE,
+                index: 0, // TODO: calculate proper index
             })
 
             app.locals.session.lips.push(result)
@@ -380,13 +381,13 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         })
 
     router
-        .get('auto_ip', (_req, res) => {
+        .get('/auto_tool_server_ip', (_req, res) => {
             res.json({
                 data: app.locals.autoToolServerIP,
                 error: null,
             })
         })
-        .post('auto_tool_server_ip', (req, res) => {
+        .post('/auto_tool_server_ip', (req, res) => {
             app.locals.autoToolServerIP = req.body.ip
 
             res.json({
