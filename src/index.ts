@@ -34,21 +34,17 @@ app.use(bodyParser.json({ limit: '1mb' }))
 app.use(bodyParser.urlencoded({ limit: '1mb', extended: true }))
 
 /**
- * Routes
- */
-
-app.use('/auth', authRouter(app))
-app.use('/calendar', calendarRouter())
-app.use('/live', liveRouter(app, socketServer))
-app.use('/repertoire', repertoireRouter(app))
-
-app.use(express.static(path.resolve('static')))
-
-/**
  * Main
  */
 
 const main = () => {
+    app.use('/auth', authRouter(app))
+    app.use('/calendar', calendarRouter())
+    app.use('/live', liveRouter(app, socketServer))
+    app.use('/repertoire', repertoireRouter(app))
+
+    app.use(express.static(path.resolve('static')))
+
     const server = app.listen(PORT, () => console.log(`Listening on port ${PORT}.`))
 
     const io = new Server(server, {
