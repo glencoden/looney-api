@@ -6,10 +6,13 @@ export type TLip = {
     sessionId: number
     songId: number
     guestGuid: string
-    date: string
-    name: string
+    guestName: string
     status: LipStatus
+    index: number
+    deletedAt: Date | null
+    liveAt: Date | null
+    doneAt: Date | null
     message?: string
 }
 
-export type TLipCreationAttributes = Optional<TLip, 'id'>
+export type TLipCreationAttributes = Optional<TLip, 'id' | 'deletedAt' | 'liveAt' | 'doneAt'>

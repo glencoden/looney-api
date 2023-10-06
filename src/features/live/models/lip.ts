@@ -18,11 +18,7 @@ export default {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    date: {
-        type: DataTypes.STRING,
-        allowNull: false,
-    },
-    name: {
+    guestName: {
         type: DataTypes.STRING,
         allowNull: false,
     },
@@ -30,5 +26,12 @@ export default {
         type: DataTypes.STRING,
         allowNull: false,
     },
+    index: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+    },
+    deletedAt: DataTypes.DATE,
+    liveAt: DataTypes.DATE,
+    doneAt: DataTypes.DATE,
     message: DataTypes.STRING,
 } as ModelAttributes

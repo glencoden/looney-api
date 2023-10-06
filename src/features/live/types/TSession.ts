@@ -2,8 +2,10 @@ import { Optional } from 'sequelize'
 
 export type TSession = {
     id: number
+    guid: string
     setlistId: number
-    date: string
+    startDate: Date
+    endDate: Date
     title: string
     deleted: boolean
 }

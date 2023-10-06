@@ -11,6 +11,7 @@ export function authRouter(app: TApp) {
         model: tokenService,
         grants: [ 'password' ],
         debug: true,
+        accessTokenLifetime: 1000 * 60 * 60 * 6,
     })
 
     app.use(app.oauth.errorHandler())
