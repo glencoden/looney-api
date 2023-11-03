@@ -391,6 +391,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             app.locals.autoToolServerIP = req.body.data?.ip // reading from looney-auto-tool-server axios request
 
             res.json({
+                data: app.locals.autoToolServerIP,
                 error: null,
             })
 
