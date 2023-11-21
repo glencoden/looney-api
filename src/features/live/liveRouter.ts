@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import express from 'express'
+import QRCode from 'qrcode'
 import { Server, Socket } from 'socket.io'
 import { TApp } from '../../types/TApp'
 import { repertoireOrm } from '../repertoire'
@@ -364,6 +365,12 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
     router
         .get('/qr_code', async (_req, res) => {
+            // Generate QR code with session guid in url https://lips.looneytunez.de?session=ab435b6f-5a4a-4049-a5b4-b0da3e94a977
+            // Once guest client app gets served via this url, extract the params there and request guest data from server
+
+            // TODO
+            // auto send mails with QR code to Fabi and Nikolai a while before a session starts
+
             const nextSession = await liveOrm.getNextSession()
 
             if (nextSession.length === 0) {
@@ -371,13 +378,20 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
-            // TODO
-            // Generate QR code with session guid in url https://lips.looneytunez.de?session=ab435b6f-5a4a-4049-a5b4-b0da3e94a977
-            // Once guest client app gets served via this url, extract the params there and request guest data from server
+            // const mockGuid = crypto.randomUUID()
 
-            // auto send mails with QR code to Fabi and Nikolai a while before a session starts
+            // const url = `${req.protocol}://${req.get('host')}/live/guest/${mockGuid}`
 
-            res.send('There will be a QR code here.')
+            const url = `https://lips.looneytunez.de?session=${nextSession[0].guid}`
+
+            QRCode.toDataURL(url, (err: unknown, data: string) => {
+                if (err) {
+                    res.send(err)
+                    return
+                }
+
+                res.send(`<div style="height: 100vh; max-height: 800px; display: flex; justify-content: center; align-items: center;"><img src="${data}"></div>`)
+            })
         })
 
     router
@@ -402,6 +416,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
     router
         .get('/insights/:session_id?', app.oauth.authorise(), (_req, res) => {
+            // TODO: implement functionality
+
             res.send('There will be some insights here.')
         })
 
