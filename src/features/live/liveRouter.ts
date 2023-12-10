@@ -9,6 +9,7 @@ import { ServerErrors } from './enums/ServerErrors'
 import { SocketEvents } from './enums/SocketEvents'
 import { liveOrm } from './index'
 import { TLip } from './types/TLip'
+import { TSession } from './types/TSession'
 
 type GuestSocket = Socket & { guid: string }
 
@@ -57,9 +58,19 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             })
         })
         .post('/sessions', app.oauth.authorise(), async (req, res) => {
-            const result = await liveOrm.createSession({
+            const input = {
                 ...req.body,
                 guid: crypto.randomUUID(),
+            }
+
+            Object.entries(input).forEach(([key, value]) => {
+                console.log(`Input ${key}: ${value} with type ${typeof value}`)
+            })
+
+            const result = await liveOrm.createSession(input)
+
+            Object.entries(result).forEach(([key, value]) => {
+                console.log(`Result ${key}: ${value} with type ${typeof value}`)
             })
 
             res.json({
@@ -99,12 +110,20 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     //
 
     router
-        .get('/lips/:lip_id?', app.oauth.authorise(), async (req, res) => {
+        // Request /lips/0 to get all lips at all times
+        .get('/lips/:session_id?/:lip_id?', async (req, res) => {
             if (!req.params.lip_id) {
-                const lips = await liveOrm.getAllLips()
+                const sessionId = req.params.session_id ?? app.locals.session
+
+                const lips = sessionId !== null && sessionId !== 0
+                    ? await liveOrm.getLipsBySessionId(sessionId)
+                    : await liveOrm.getAllLips()
 
                 res.json({
-                    data: lips,
+                    data: {
+                        sessionId: sessionId,
+                        lips,
+                    },
                     error: null,
                 })
                 return
@@ -124,59 +143,96 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             res.send('Not implemented.')
         })
         .put('/lips', app.oauth.authorise(), async (req, res) => {
-            await liveOrm.setLip(req.body)
+            // req.body: TLipUpdate
+            //
+            // {
+            //     id: number
+            //     dragIndex: number
+            //     dragStatus: LipStatus
+            //     dropIndex: number
+            //     dropStatus: LipStatus
+            //     message: string
+            // }
 
-            const lips = await liveOrm.getLip(req.body.id)
+            if (app.locals.session === null) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.NO_ACTIVE_SESSION,
+                })
+                return
+            }
 
-            if (app.locals.session !== null) {
-                app.locals.session.lips = app.locals.session.lips.map((lip: TLip) => {
-                    if (lip.id === lips[0].id) {
-                        return lips[0]
+            const dragIndex = req.body.dragIndex
+            const dragStatus = req.body.dragStatus
+
+            const dropIndex = req.body.dropIndex
+            const dropStatus = req.body.dropStatus
+
+            const prevLips = await liveOrm.getLipsBySessionId(app.locals.session.id)
+
+            let updatedLip: TLip | null = null
+
+            for (let i = 0; i < prevLips.length; i++) {
+                const currentItem = prevLips[i]
+
+                const currentIndex = currentItem.index
+                const currentStatus = currentItem.status
+
+                const isDragItem = currentItem.id === req.body.id
+
+                if (isDragItem) {
+                    let index = dropIndex
+
+                    if (dropStatus === dragStatus && dragIndex < dropIndex) {
+                        index--
                     }
-                    return lip
+
+                    updatedLip = {
+                        ...currentItem,
+                        index,
+                        status: dropStatus,
+                        message: req.body.message,
+                    }
+
+                    await liveOrm.setLip(updatedLip)
+
+                    continue
+                }
+
+                let index = currentIndex
+
+                if (currentStatus === dragStatus && currentIndex > dragIndex) {
+                    index--
+                }
+
+                if (currentStatus === dropStatus && currentIndex >= dropIndex) {
+                    index++
+                }
+
+                const message = req.body.message
+
+                if (index === currentItem.index && message === currentItem.message) {
+                    continue
+                }
+
+                await liveOrm.setLip({
+                    ...currentItem,
+                    index,
+                    message,
                 })
             }
 
+            app.locals.session.lips = await liveOrm.getLipsBySessionId(app.locals.session.id)
+
             res.json({
-                data: lips[0],
+                data: updatedLip,
                 error: null,
             })
 
-            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lips[0].guestGuid)
+            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === updatedLip?.guestGuid)
 
             if (socket) {
-                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lips[0])
-            }
-        })
-        .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
-            const [ , message ] = decodeURI(req.query.message as string).split('=')
-
-            await liveOrm.setLip({
-                id: parseInt(req.params.lip_id),
-                status: LipStatus.DELETED,
-                message,
-            })
-
-            const lips = await liveOrm.getLip(parseInt(req.params.lip_id))
-
-            if (app.locals.session !== null) {
-                app.locals.session.lips = app.locals.session.lips.map((lip: TLip) => {
-                    if (lip.id === lips[0].id) {
-                        return lips[0]
-                    }
-                    return lip
-                })
-            }
-
-            res.json({
-                data: lips[0],
-                error: null,
-            })
-
-            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lips[0].guestGuid)
-
-            if (socket) {
-                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lips[0])
+                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, updatedLip)
             }
         })
 
@@ -278,13 +334,15 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
+            const prevLips = await liveOrm.getLipsBySessionId(app.locals.session.id)
+
             const result = await liveOrm.createLip({
                 sessionId: app.locals.session.id,
                 songId: req.body.songId,
                 guestGuid: req.params.guest_guid,
                 guestName: req.body.name,
                 status: LipStatus.IDLE,
-                index: 0, // TODO: calculate proper index
+                index: prevLips.filter((lip: TLip) => lip.status === LipStatus.IDLE).length, // this works cause new lips are idle
             })
 
             app.locals.session.lips.push(result)
@@ -364,25 +422,30 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     //
 
     router
-        .get('/qr_code', async (_req, res) => {
-            // Generate QR code with session guid in url https://lips.looneytunez.de?session=ab435b6f-5a4a-4049-a5b4-b0da3e94a977
-            // Once guest client app gets served via this url, extract the params there and request guest data from server
-
+        .get('/qr_code/:session_id?', async (req, res) => {
             // TODO
-            // auto send mails with QR code to Fabi and Nikolai a while before a session starts
+            // 1. Auth protect route
+            // 2. Enable QR code download for any session in boss.looneytunez.de
+            // 3. Load QR code in looney tool default screen
 
-            const nextSession = await liveOrm.getNextSession()
+            let sessionGuid: TSession['guid'] | null = null
 
-            if (nextSession.length === 0) {
-                res.send('No upcoming session.')
+            if (req.params.session_id) {
+                const requestedSession = await liveOrm.getSession(parseInt(req.params.session_id))
+
+                sessionGuid = requestedSession[0]?.guid ?? null
+            } else {
+                const nextSession = await liveOrm.getNextSession()
+
+                sessionGuid = nextSession[0]?.guid ?? null
+            }
+
+            if (sessionGuid === null) {
+                res.send('No session found.')
                 return
             }
 
-            // const mockGuid = crypto.randomUUID()
-
-            // const url = `${req.protocol}://${req.get('host')}/live/guest/${mockGuid}`
-
-            const url = `https://lips.looneytunez.de?session=${nextSession[0].guid}`
+            const url = `https://lips.looneytunez.de?session=${sessionGuid}`
 
             QRCode.toDataURL(url, (err: unknown, data: string) => {
                 if (err) {
