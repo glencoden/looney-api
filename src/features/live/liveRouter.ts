@@ -41,36 +41,26 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     router
         .get('/sessions/:session_id?', app.oauth.authorise(), async (req, res) => {
             if (!req.params.session_id) {
-                const sessions = await liveOrm.getAllSessions()
+                const result = await liveOrm.getAllSessions()
 
                 res.json({
-                    data: sessions,
+                    data: result,
                     error: null,
                 })
                 return
             }
 
-            const session = await liveOrm.getSession(parseInt(req.params.session_id))
+            const result = await liveOrm.getSession(parseInt(req.params.session_id))
 
             res.json({
-                data: session,
+                data: result[0],
                 error: null,
             })
         })
         .post('/sessions', app.oauth.authorise(), async (req, res) => {
-            const input = {
+            const result = await liveOrm.createSession({
                 ...req.body,
                 guid: crypto.randomUUID(),
-            }
-
-            Object.entries(input).forEach(([key, value]) => {
-                console.log(`Input ${key}: ${value} with type ${typeof value}`)
-            })
-
-            const result = await liveOrm.createSession(input)
-
-            Object.entries(result).forEach(([key, value]) => {
-                console.log(`Result ${key}: ${value} with type ${typeof value}`)
             })
 
             res.json({
@@ -82,7 +72,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             const result = await liveOrm.setSession(req.body)
 
             if (req.body.id === app.locals.session?.id) {
-                deleteActiveSession() // which will be set by polling within the next interval and so be updated on all clients
+                deleteActiveSession() // which will be reset by polling within the next interval and so be updated on all clients
             }
 
             res.json({
@@ -113,7 +103,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
         // Request /lips/0 to get all lips at all times
         .get('/lips/:session_id?/:lip_id?', async (req, res) => {
             if (!req.params.lip_id) {
-                const sessionId = req.params.session_id ?? app.locals.session
+                const sessionId = req.params.session_id ?? app.locals.session?.id ?? null
 
                 const lips = sessionId !== null && sessionId !== 0
                     ? await liveOrm.getLipsBySessionId(sessionId)
@@ -520,12 +510,12 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }
             })
 
-            socket.on(SocketEvents.BOSS_SERVER_JOIN, (_, setSession) => {
+            socket.on(SocketEvents.BOSS_SERVER_JOIN, (_, setSessionCallback) => {
                 const index = app.locals.sockets.findIndex((s: Socket) => s.id === socket.id)
 
                 if (index === -1) {
                     console.error('boss socket not found')
-                    setSession(null)
+                    setSessionCallback(null)
                     return
                 }
 
@@ -533,7 +523,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 app.locals.sockets.splice(index, 1)
 
-                setSession(app.locals.session)
+                setSessionCallback(app.locals.session)
             })
 
             socket.on(SocketEvents.BOSS_SERVER_RUN_SESSION, () => {
@@ -598,22 +588,22 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     }
 
     const pollActiveSession = async () => {
-        const sessions = await liveOrm.getActiveSession()
+        const result = await liveOrm.getActiveSession()
 
-        if (sessions.length === 0) {
+        if (result.length === 0) {
             deleteActiveSession()
-        } else if (app.locals.session?.id !== sessions[0].id) {
-            const lips = await liveOrm.getLipsBySessionId(sessions[0].id)
+        } else if (app.locals.session?.id !== result[0].id) {
+            const lips = await liveOrm.getLipsBySessionId(result[0].id)
 
             app.locals.session = {
                 isRunning: false,
 
-                id: sessions[0].id,
-                guid: sessions[0].guid,
-                setlistId: sessions[0].setlistId,
-                startDate: sessions[0].startDate,
-                endDate: sessions[0].endDate,
-                title: sessions[0].title,
+                id: result[0].id,
+                guid: result[0].guid,
+                setlistId: result[0].setlistId,
+                startDate: result[0].startDate,
+                endDate: result[0].endDate,
+                title: result[0].title,
 
                 lips: lips.map((lip) => ({
                     id: lip.id,
