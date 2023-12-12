@@ -45,7 +45,6 @@ class RepertoireOrm extends SequelizeOrm {
     }
 
     getSetlist(id: TSetlist['id']) {
-        console.log('id', typeof id, id)
         return this.Setlist.findAll({ where: { id } })
     }
 

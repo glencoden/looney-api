@@ -9,10 +9,12 @@ export type TLip = {
     guestName: string
     status: LipStatus
     index: number
+    createdAt: Date
+    updatedAt: Date
     deletedAt: Date | null
     liveAt: Date | null
     doneAt: Date | null
     message?: string
 }
 
-export type TLipCreationAttributes = Optional<TLip, 'id' | 'deletedAt' | 'liveAt' | 'doneAt'>
+export type TLipCreationAttributes = Optional<TLip, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'liveAt' | 'doneAt'>

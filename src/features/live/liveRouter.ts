@@ -25,6 +25,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
     app.locals.autoToolServerIP = null
 
+    app.locals.io = null
     app.locals.sockets = []
     app.locals.bossSocket = null
     app.locals.toolSocket = null
@@ -221,7 +222,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === updatedLip?.guestGuid)
 
-            if (socket) {
+            if (socket && typeof socket.emit === 'function') {
                 socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, updatedLip)
             }
         })
@@ -412,12 +413,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     //
 
     router
-        .get('/qr_code/:session_id?', async (req, res) => {
-            // TODO
-            // 1. Auth protect route
-            // 2. Enable QR code download for any session in boss.looneytunez.de
-            // 3. Load QR code in looney tool default screen
-
+        .get('/qr_code/:session_id?', app.oauth.authorise(), async (req, res) => {
             let sessionGuid: TSession['guid'] | null = null
 
             if (req.params.session_id) {
@@ -443,7 +439,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                     return
                 }
 
-                res.send(`<div style="height: 100vh; max-height: 800px; display: flex; justify-content: center; align-items: center;"><img src="${data}"></div>`)
+                res.json({
+                    data: `<img src="${data}">`,
+                    error: null,
+                })
             })
         })
 
@@ -481,6 +480,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     //
 
     socketServer.then((io) => {
+        app.locals.io = io
+
         io.on('connection', (socket) => {
             app.locals.sockets.push(socket)
 
@@ -510,12 +511,16 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }
             })
 
-            socket.on(SocketEvents.BOSS_SERVER_JOIN, (_, setSessionCallback) => {
+            socket.on(SocketEvents.BOSS_SERVER_JOIN, (setSessionCallback) => {
+
                 const index = app.locals.sockets.findIndex((s: Socket) => s.id === socket.id)
 
                 if (index === -1) {
                     console.error('boss socket not found')
-                    setSessionCallback(null)
+                    setSessionCallback({
+                        data: null,
+                        error: ServerErrors.NOT_FOUND,
+                    })
                     return
                 }
 
@@ -523,7 +528,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 app.locals.sockets.splice(index, 1)
 
-                setSessionCallback(app.locals.session)
+                setSessionCallback({
+                    data: app.locals.session,
+                    error: null,
+                })
             })
 
             socket.on(SocketEvents.BOSS_SERVER_RUN_SESSION, () => {
@@ -605,18 +613,20 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 endDate: result[0].endDate,
                 title: result[0].title,
 
-                lips: lips.map((lip) => ({
-                    id: lip.id,
-                    sessionId: lip.sessionId,
-                    songId: lip.songId,
-                    guestGuid: lip.guestGuid,
-                    guestName: lip.guestName,
-                    deletedAt: lip.deletedAt,
-                    liveAt: lip.liveAt,
-                    doneAt: lip.doneAt,
-                    status: lip.status,
-                    message: lip.message,
-                })),
+                lips,
+
+                // lips: lips.map((lip) => ({
+                //     id: lip.id,
+                //     sessionId: lip.sessionId,
+                //     songId: lip.songId,
+                //     guestGuid: lip.guestGuid,
+                //     guestName: lip.guestName,
+                //     deletedAt: lip.deletedAt,
+                //     liveAt: lip.liveAt,
+                //     doneAt: lip.doneAt,
+                //     status: lip.status,
+                //     message: lip.message,
+                // })),
 
                 guests: lips.reduce((result: string[], lip) => {
                     if (!result.includes(lip.guestGuid)) {
@@ -626,13 +636,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }, []),
             }
 
-            if (app.locals.bossSocket !== null) {
-                app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_START)
-            }
-
-            app.locals.guestSockets.forEach((socket: Socket) => {
-                socket.emit(SocketEvents.SERVER_ALL_SESSION_START)
-            })
+            app.locals.io.emit(SocketEvents.SERVER_ALL_SESSION_START, app.locals.session)
         }
 
         console.log(JSON.stringify(app.locals.session)) // TODO: remove dev code
@@ -651,13 +655,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     const deleteActiveSession = () => {
         app.locals.session = null
 
-        if (app.locals.bossSocket !== null) {
-            app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_END)
-        }
-
-        app.locals.guestSockets.forEach((socket: Socket) => {
-            socket.emit(SocketEvents.SERVER_ALL_SESSION_END)
-        })
+        app.locals.io.emit(SocketEvents.SERVER_ALL_SESSION_END)
     }
 
     return router
