@@ -14,7 +14,7 @@ import { TSession } from './types/TSession'
 type GuestSocket = Socket & { guid: string }
 
 const MAX_REQUESTS_PER_GUEST_PER_MINUTE = 5
-const ACTIVE_SESSION_POLL_INTERVAL = 1000 * 60
+const ACTIVE_SESSION_POLL_INTERVAL = 1000 * 20
 
 let pollActiveSessionTimeoutId: NodeJS.Timeout | null = null
 
@@ -179,7 +179,16 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                     }
 
                     updatedLip = {
-                        ...currentItem,
+                        id: currentItem.id,
+                        sessionId: currentItem.sessionId,
+                        songId: currentItem.songId,
+                        guestGuid: currentItem.guestGuid,
+                        guestName: currentItem.guestName,
+                        createdAt: currentItem.createdAt,
+                        updatedAt: currentItem.updatedAt,
+                        deletedAt: currentItem.deletedAt,
+                        liveAt: currentItem.liveAt,
+                        doneAt: currentItem.doneAt,
                         index,
                         status: dropStatus,
                         message: req.body.message,
@@ -207,7 +216,17 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }
 
                 await liveOrm.setLip({
-                    ...currentItem,
+                    id: currentItem.id,
+                    sessionId: currentItem.sessionId,
+                    songId: currentItem.songId,
+                    guestGuid: currentItem.guestGuid,
+                    guestName: currentItem.guestName,
+                    status: currentItem.status,
+                    createdAt: currentItem.createdAt,
+                    updatedAt: currentItem.updatedAt,
+                    deletedAt: currentItem.deletedAt,
+                    liveAt: currentItem.liveAt,
+                    doneAt: currentItem.doneAt,
                     index,
                     message,
                 })
@@ -222,7 +241,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === updatedLip?.guestGuid)
 
-            if (socket && typeof socket.emit === 'function') {
+            if (socket) {
                 socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, updatedLip)
             }
         })
@@ -317,7 +336,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
-            if (app.locals.session.guests.includes(req.params.guest_guid)) {
+            if (!app.locals.session.guests.includes(req.params.guest_guid)) {
                 res.json({
                     data: null,
                     error: ServerErrors.WRONG_GUEST_GUID,
@@ -431,7 +450,9 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
-            const url = `https://lips.looneytunez.de?session=${sessionGuid}`
+            console.log('sessionGuid', sessionGuid) // TODO: remove dev code
+
+            const url = `https://staging.lips.looneytunez.de?session=${sessionGuid}`
 
             QRCode.toDataURL(url, (err: unknown, data: string) => {
                 if (err) {
@@ -577,10 +598,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 app.locals.sockets.splice(index, 1)
 
-                app.locals.guestSockets.push({
-                    ...socket,
-                    guid,
-                })
+                // @ts-ignore
+                socket.guid = guid
+
+                app.locals.guestSockets.push(socket)
             })
         })
     })
@@ -596,6 +617,12 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     }
 
     const pollActiveSession = async () => {
+        // TODO: remove dev code
+        console.log('\napp.locals.sockets', app.locals.sockets.length)
+        console.log('app.locals.bossSocket', app.locals.bossSocket !== null)
+        console.log('app.locals.toolSocket', app.locals.toolSocket !== null)
+        console.log('app.locals.guestSockets', app.locals.guestSockets.length, '\n')
+
         const result = await liveOrm.getActiveSession()
 
         if (result.length === 0) {
@@ -615,19 +642,6 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 lips,
 
-                // lips: lips.map((lip) => ({
-                //     id: lip.id,
-                //     sessionId: lip.sessionId,
-                //     songId: lip.songId,
-                //     guestGuid: lip.guestGuid,
-                //     guestName: lip.guestName,
-                //     deletedAt: lip.deletedAt,
-                //     liveAt: lip.liveAt,
-                //     doneAt: lip.doneAt,
-                //     status: lip.status,
-                //     message: lip.message,
-                // })),
-
                 guests: lips.reduce((result: string[], lip) => {
                     if (!result.includes(lip.guestGuid)) {
                         result.push(lip.guestGuid)
@@ -639,7 +653,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             app.locals.io.emit(SocketEvents.SERVER_ALL_SESSION_START, app.locals.session)
         }
 
-        console.log(JSON.stringify(app.locals.session)) // TODO: remove dev code
+        console.log('\n', JSON.stringify(app.locals.session, null, 4)) // TODO: remove dev code
 
         pollActiveSessionTimeoutId = setTimeout(pollActiveSession, ACTIVE_SESSION_POLL_INTERVAL)
     }
