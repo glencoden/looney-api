@@ -9,11 +9,12 @@ import { ServerErrors } from './enums/ServerErrors'
 import { SocketEvents } from './enums/SocketEvents'
 import { liveOrm } from './index'
 import { TLip } from './types/TLip'
+import { TSession } from './types/TSession'
 
 type GuestSocket = Socket & { guid: string }
 
 const MAX_REQUESTS_PER_GUEST_PER_MINUTE = 5
-const ACTIVE_SESSION_POLL_INTERVAL = 1000 * 60
+const ACTIVE_SESSION_POLL_INTERVAL = 1000 * 20
 
 let pollActiveSessionTimeoutId: NodeJS.Timeout | null = null
 
@@ -24,6 +25,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
     app.locals.autoToolServerIP = null
 
+    app.locals.io = null
     app.locals.sockets = []
     app.locals.bossSocket = null
     app.locals.toolSocket = null
@@ -40,19 +42,19 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     router
         .get('/sessions/:session_id?', app.oauth.authorise(), async (req, res) => {
             if (!req.params.session_id) {
-                const sessions = await liveOrm.getAllSessions()
+                const result = await liveOrm.getAllSessions()
 
                 res.json({
-                    data: sessions,
+                    data: result,
                     error: null,
                 })
                 return
             }
 
-            const session = await liveOrm.getSession(parseInt(req.params.session_id))
+            const result = await liveOrm.getSession(parseInt(req.params.session_id))
 
             res.json({
-                data: session,
+                data: result[0],
                 error: null,
             })
         })
@@ -71,7 +73,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             const result = await liveOrm.setSession(req.body)
 
             if (req.body.id === app.locals.session?.id) {
-                deleteActiveSession() // which will be set by polling within the next interval and so be updated on all clients
+                deleteActiveSession() // which will be reset by polling within the next interval and so be updated on all clients
             }
 
             res.json({
@@ -99,12 +101,20 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     //
 
     router
-        .get('/lips/:lip_id?', app.oauth.authorise(), async (req, res) => {
+        // Request /lips/0 to get all lips at all times
+        .get('/lips/:session_id?/:lip_id?', async (req, res) => {
             if (!req.params.lip_id) {
-                const lips = await liveOrm.getAllLips()
+                const sessionId = req.params.session_id ?? app.locals.session?.id ?? null
+
+                const lips = sessionId !== null && sessionId !== 0
+                    ? await liveOrm.getLipsBySessionId(sessionId)
+                    : await liveOrm.getAllLips()
 
                 res.json({
-                    data: lips,
+                    data: {
+                        sessionId: sessionId,
+                        lips,
+                    },
                     error: null,
                 })
                 return
@@ -124,59 +134,115 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
             res.send('Not implemented.')
         })
         .put('/lips', app.oauth.authorise(), async (req, res) => {
-            await liveOrm.setLip(req.body)
+            // req.body: TLipUpdate
+            //
+            // {
+            //     id: number
+            //     dragIndex: number
+            //     dragStatus: LipStatus
+            //     dropIndex: number
+            //     dropStatus: LipStatus
+            //     message: string
+            // }
 
-            const lips = await liveOrm.getLip(req.body.id)
+            if (app.locals.session === null) {
+                res.json({
+                    data: null,
+                    error: ServerErrors.NO_ACTIVE_SESSION,
+                })
+                return
+            }
 
-            if (app.locals.session !== null) {
-                app.locals.session.lips = app.locals.session.lips.map((lip: TLip) => {
-                    if (lip.id === lips[0].id) {
-                        return lips[0]
+            const dragIndex = req.body.dragIndex
+            const dragStatus = req.body.dragStatus
+
+            const dropIndex = req.body.dropIndex
+            const dropStatus = req.body.dropStatus
+
+            const prevLips = await liveOrm.getLipsBySessionId(app.locals.session.id)
+
+            let updatedLip: TLip | null = null
+
+            for (let i = 0; i < prevLips.length; i++) {
+                const currentItem = prevLips[i]
+
+                const currentIndex = currentItem.index
+                const currentStatus = currentItem.status
+
+                const isDragItem = currentItem.id === req.body.id
+
+                if (isDragItem) {
+                    let index = dropIndex
+
+                    if (dropStatus === dragStatus && dragIndex < dropIndex) {
+                        index--
                     }
-                    return lip
+
+                    updatedLip = {
+                        id: currentItem.id,
+                        sessionId: currentItem.sessionId,
+                        songId: currentItem.songId,
+                        guestGuid: currentItem.guestGuid,
+                        guestName: currentItem.guestName,
+                        createdAt: currentItem.createdAt,
+                        updatedAt: currentItem.updatedAt,
+                        deletedAt: currentItem.deletedAt,
+                        liveAt: currentItem.liveAt,
+                        doneAt: currentItem.doneAt,
+                        index,
+                        status: dropStatus,
+                        message: req.body.message,
+                    }
+
+                    await liveOrm.setLip(updatedLip)
+
+                    continue
+                }
+
+                let index = currentIndex
+
+                if (currentStatus === dragStatus && currentIndex > dragIndex) {
+                    index--
+                }
+
+                if (currentStatus === dropStatus && currentIndex >= dropIndex) {
+                    index++
+                }
+
+                const message = req.body.message
+
+                if (index === currentItem.index && message === currentItem.message) {
+                    continue
+                }
+
+                await liveOrm.setLip({
+                    id: currentItem.id,
+                    sessionId: currentItem.sessionId,
+                    songId: currentItem.songId,
+                    guestGuid: currentItem.guestGuid,
+                    guestName: currentItem.guestName,
+                    status: currentItem.status,
+                    createdAt: currentItem.createdAt,
+                    updatedAt: currentItem.updatedAt,
+                    deletedAt: currentItem.deletedAt,
+                    liveAt: currentItem.liveAt,
+                    doneAt: currentItem.doneAt,
+                    index,
+                    message,
                 })
             }
 
+            app.locals.session.lips = await liveOrm.getLipsBySessionId(app.locals.session.id)
+
             res.json({
-                data: lips[0],
+                data: updatedLip,
                 error: null,
             })
 
-            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lips[0].guestGuid)
+            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === updatedLip?.guestGuid)
 
             if (socket) {
-                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lips[0])
-            }
-        })
-        .delete('/lips/:lip_id', app.oauth.authorise(), async (req, res) => {
-            const [ , message ] = decodeURI(req.query.message as string).split('=')
-
-            await liveOrm.setLip({
-                id: parseInt(req.params.lip_id),
-                status: LipStatus.DELETED,
-                message,
-            })
-
-            const lips = await liveOrm.getLip(parseInt(req.params.lip_id))
-
-            if (app.locals.session !== null) {
-                app.locals.session.lips = app.locals.session.lips.map((lip: TLip) => {
-                    if (lip.id === lips[0].id) {
-                        return lips[0]
-                    }
-                    return lip
-                })
-            }
-
-            res.json({
-                data: lips[0],
-                error: null,
-            })
-
-            const socket = app.locals.guestSockets.find((s: GuestSocket) => s.guid === lips[0].guestGuid)
-
-            if (socket) {
-                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, lips[0])
+                socket.emit(SocketEvents.SERVER_GUEST_UPDATE_LIP, updatedLip)
             }
         })
 
@@ -270,7 +336,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
-            if (app.locals.session.guests.includes(req.params.guest_guid)) {
+            if (!app.locals.session.guests.includes(req.params.guest_guid)) {
                 res.json({
                     data: null,
                     error: ServerErrors.WRONG_GUEST_GUID,
@@ -278,13 +344,15 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
+            const prevLips = await liveOrm.getLipsBySessionId(app.locals.session.id)
+
             const result = await liveOrm.createLip({
                 sessionId: app.locals.session.id,
                 songId: req.body.songId,
                 guestGuid: req.params.guest_guid,
                 guestName: req.body.name,
                 status: LipStatus.IDLE,
-                index: 0, // TODO: calculate proper index
+                index: prevLips.filter((lip: TLip) => lip.status === LipStatus.IDLE).length, // this works cause new lips are idle
             })
 
             app.locals.session.lips.push(result)
@@ -364,25 +432,27 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     //
 
     router
-        .get('/qr_code', async (_req, res) => {
-            // Generate QR code with session guid in url https://lips.looneytunez.de?session=ab435b6f-5a4a-4049-a5b4-b0da3e94a977
-            // Once guest client app gets served via this url, extract the params there and request guest data from server
+        .get('/qr_code/:session_id?', app.oauth.authorise(), async (req, res) => {
+            let sessionGuid: TSession['guid'] | null = null
 
-            // TODO
-            // auto send mails with QR code to Fabi and Nikolai a while before a session starts
+            if (req.params.session_id) {
+                const requestedSession = await liveOrm.getSession(parseInt(req.params.session_id))
 
-            const nextSession = await liveOrm.getNextSession()
+                sessionGuid = requestedSession[0]?.guid ?? null
+            } else {
+                const nextSession = await liveOrm.getNextSession()
 
-            if (nextSession.length === 0) {
-                res.send('No upcoming session.')
+                sessionGuid = nextSession[0]?.guid ?? null
+            }
+
+            if (sessionGuid === null) {
+                res.send('No session found.')
                 return
             }
 
-            // const mockGuid = crypto.randomUUID()
+            console.log('sessionGuid', sessionGuid) // TODO: remove dev code
 
-            // const url = `${req.protocol}://${req.get('host')}/live/guest/${mockGuid}`
-
-            const url = `https://lips.looneytunez.de?session=${nextSession[0].guid}`
+            const url = `https://staging.lips.looneytunez.de?session=${sessionGuid}`
 
             QRCode.toDataURL(url, (err: unknown, data: string) => {
                 if (err) {
@@ -390,7 +460,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                     return
                 }
 
-                res.send(`<div style="height: 100vh; max-height: 800px; display: flex; justify-content: center; align-items: center;"><img src="${data}"></div>`)
+                res.json({
+                    data: `<img src="${data}">`,
+                    error: null,
+                })
             })
         })
 
@@ -428,6 +501,8 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     //
 
     socketServer.then((io) => {
+        app.locals.io = io
+
         io.on('connection', (socket) => {
             app.locals.sockets.push(socket)
 
@@ -457,12 +532,16 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }
             })
 
-            socket.on(SocketEvents.BOSS_SERVER_JOIN, (_, setSession) => {
+            socket.on(SocketEvents.BOSS_SERVER_JOIN, (setSessionCallback) => {
+
                 const index = app.locals.sockets.findIndex((s: Socket) => s.id === socket.id)
 
                 if (index === -1) {
                     console.error('boss socket not found')
-                    setSession(null)
+                    setSessionCallback({
+                        data: null,
+                        error: ServerErrors.NOT_FOUND,
+                    })
                     return
                 }
 
@@ -470,7 +549,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 app.locals.sockets.splice(index, 1)
 
-                setSession(app.locals.session)
+                setSessionCallback({
+                    data: app.locals.session,
+                    error: null,
+                })
             })
 
             socket.on(SocketEvents.BOSS_SERVER_RUN_SESSION, () => {
@@ -516,10 +598,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
                 app.locals.sockets.splice(index, 1)
 
-                app.locals.guestSockets.push({
-                    ...socket,
-                    guid,
-                })
+                // @ts-ignore
+                socket.guid = guid
+
+                app.locals.guestSockets.push(socket)
             })
         })
     })
@@ -535,35 +617,30 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     }
 
     const pollActiveSession = async () => {
-        const sessions = await liveOrm.getActiveSession()
+        // TODO: remove dev code
+        console.log('\napp.locals.sockets', app.locals.sockets.length)
+        console.log('app.locals.bossSocket', app.locals.bossSocket !== null)
+        console.log('app.locals.toolSocket', app.locals.toolSocket !== null)
+        console.log('app.locals.guestSockets', app.locals.guestSockets.length, '\n')
 
-        if (sessions.length === 0) {
+        const result = await liveOrm.getActiveSession()
+
+        if (result.length === 0) {
             deleteActiveSession()
-        } else if (app.locals.session?.id !== sessions[0].id) {
-            const lips = await liveOrm.getLipsBySessionId(sessions[0].id)
+        } else if (app.locals.session?.id !== result[0].id) {
+            const lips = await liveOrm.getLipsBySessionId(result[0].id)
 
             app.locals.session = {
                 isRunning: false,
 
-                id: sessions[0].id,
-                guid: sessions[0].guid,
-                setlistId: sessions[0].setlistId,
-                startDate: sessions[0].startDate,
-                endDate: sessions[0].endDate,
-                title: sessions[0].title,
+                id: result[0].id,
+                guid: result[0].guid,
+                setlistId: result[0].setlistId,
+                startDate: result[0].startDate,
+                endDate: result[0].endDate,
+                title: result[0].title,
 
-                lips: lips.map((lip) => ({
-                    id: lip.id,
-                    sessionId: lip.sessionId,
-                    songId: lip.songId,
-                    guestGuid: lip.guestGuid,
-                    guestName: lip.guestName,
-                    deletedAt: lip.deletedAt,
-                    liveAt: lip.liveAt,
-                    doneAt: lip.doneAt,
-                    status: lip.status,
-                    message: lip.message,
-                })),
+                lips,
 
                 guests: lips.reduce((result: string[], lip) => {
                     if (!result.includes(lip.guestGuid)) {
@@ -573,16 +650,10 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 }, []),
             }
 
-            if (app.locals.bossSocket !== null) {
-                app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_START)
-            }
-
-            app.locals.guestSockets.forEach((socket: Socket) => {
-                socket.emit(SocketEvents.SERVER_ALL_SESSION_START)
-            })
+            app.locals.io.emit(SocketEvents.SERVER_ALL_SESSION_START, app.locals.session)
         }
 
-        console.log(JSON.stringify(app.locals.session)) // TODO: remove dev code
+        console.log('\n', JSON.stringify(app.locals.session, null, 4)) // TODO: remove dev code
 
         pollActiveSessionTimeoutId = setTimeout(pollActiveSession, ACTIVE_SESSION_POLL_INTERVAL)
     }
@@ -598,13 +669,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     const deleteActiveSession = () => {
         app.locals.session = null
 
-        if (app.locals.bossSocket !== null) {
-            app.locals.bossSocket.emit(SocketEvents.SERVER_ALL_SESSION_END)
-        }
-
-        app.locals.guestSockets.forEach((socket: Socket) => {
-            socket.emit(SocketEvents.SERVER_ALL_SESSION_END)
-        })
+        app.locals.io.emit(SocketEvents.SERVER_ALL_SESSION_END)
     }
 
     return router

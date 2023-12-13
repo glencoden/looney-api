@@ -64,7 +64,7 @@ const main = () => {
 
 Promise.all([
     authOrm.sync(InitType.UPDATE),
-    liveOrm.sync(InitType.RESET),
+    liveOrm.sync(InitType.UPDATE),
     repertoireOrm.sync(InitType.UPDATE),
 ])
     .then(main)

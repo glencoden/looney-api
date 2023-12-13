@@ -59,7 +59,11 @@ class LiveOrm extends SequelizeOrm {
     // sessions
 
     getAllSessions() {
-        return this.Session.findAll() as unknown as Promise<TSession[]>
+        return this.Session.findAll({
+            where: {
+                deleted: { [Op.not]: true },
+            },
+        }) as unknown as Promise<TSession[]>
     }
 
     getNextSession() {
@@ -70,7 +74,10 @@ class LiveOrm extends SequelizeOrm {
                 startDate: {
                     [Op.gt]: currentDate,
                 },
-            }
+                deleted: {
+                    [Op.not]: true,
+                },
+            },
         }) as unknown as Promise<TSession[]>
     }
 
@@ -84,8 +91,11 @@ class LiveOrm extends SequelizeOrm {
                 },
                 endDate: {
                     [Op.gt]: currentDate,
-                }
-            }
+                },
+                deleted: {
+                    [Op.not]: true,
+                },
+            },
         }) as unknown as Promise<TSession[]>
     }
 
@@ -97,7 +107,14 @@ class LiveOrm extends SequelizeOrm {
     }
 
     getSession(id: TSession['id']) {
-        return this.Session.findAll({ where: { id } }) as unknown as Promise<TSession[]>
+        return this.Session.findAll({
+            where: {
+                id,
+                deleted: {
+                    [Op.not]: true,
+                },
+            },
+        }) as unknown as Promise<TSession[]>
     }
 
     setSession(session: TSessionCreationAttributes) {
