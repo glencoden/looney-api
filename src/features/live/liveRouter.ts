@@ -450,9 +450,7 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
                 return
             }
 
-            console.log('sessionGuid', sessionGuid) // TODO: remove dev code
-
-            const url = `https://staging.lips.looneytunez.de?session=${sessionGuid}`
+            const url = `https://lips.looneytunez.de?session=${sessionGuid}`
 
             QRCode.toDataURL(url, (err: unknown, data: string) => {
                 if (err) {
@@ -617,12 +615,6 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
     }
 
     const pollActiveSession = async () => {
-        // TODO: remove dev code
-        console.log('\napp.locals.sockets', app.locals.sockets.length)
-        console.log('app.locals.bossSocket', app.locals.bossSocket !== null)
-        console.log('app.locals.toolSocket', app.locals.toolSocket !== null)
-        console.log('app.locals.guestSockets', app.locals.guestSockets.length, '\n')
-
         const result = await liveOrm.getActiveSession()
 
         if (result.length === 0) {
@@ -652,8 +644,6 @@ export function liveRouter(app: TApp, socketServer: Promise<Server>) {
 
             app.locals.io.emit(SocketEvents.SERVER_ALL_SESSION_START, app.locals.session)
         }
-
-        console.log('\n', JSON.stringify(app.locals.session, null, 4)) // TODO: remove dev code
 
         pollActiveSessionTimeoutId = setTimeout(pollActiveSession, ACTIVE_SESSION_POLL_INTERVAL)
     }
